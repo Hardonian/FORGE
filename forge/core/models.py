@@ -64,6 +64,14 @@ class DuctSpec(BaseModel):
 
     # Internal aerodynamic features
     guide_vanes: int = Field(0, ge=0, le=5, description="Number of internal splitter vanes to prevent flow separation")
+    width_profile_ctrl: List[float] = Field(
+        default_factory=list,
+        description="Optional interior Bezier control points (in mm) for non-linear width expansion profile",
+    )
+    height_profile_ctrl: List[float] = Field(
+        default_factory=list,
+        description="Optional interior Bezier control points (in mm) for non-linear height expansion profile",
+    )
 
     # Mounting flange integration
     fan_standard: Optional[ServerFanStandard] = Field(None, description="Optional server fan standard for inlet flange")
@@ -85,6 +93,10 @@ class DuctSpec(BaseModel):
             max_r = min(self.inlet_width, self.inlet_height, self.outlet_width, self.outlet_height) / 2.0
             if self.corner_radius >= max_r:
                 raise ValueError(f"Corner radius {self.corner_radius}mm must be less than half of minimum dimension {max_r}mm")
+        for ctrl_list, label in ((self.width_profile_ctrl, "width_profile_ctrl"), (self.height_profile_ctrl, "height_profile_ctrl")):
+            for c_val in ctrl_list:
+                if not math.isfinite(c_val) or c_val <= self.wall * 2.0:
+                    raise ValueError(f"{label} control point {c_val}mm must be finite and greater than 2 * wall ({self.wall * 2.0}mm)")
         return self
 
     def is_baseline_simple(self) -> bool:
@@ -97,6 +109,8 @@ class DuctSpec(BaseModel):
             and self.outlet_shape == CrossSectionShape.RECTANGULAR
             and not self.preserve_normal_thickness
             and self.guide_vanes == 0
+            and len(self.width_profile_ctrl) == 0
+            and len(self.height_profile_ctrl) == 0
             and self.fan_standard is None
             and self.flange_thickness == 0.0
         )
@@ -121,11 +135,13 @@ class DuctSpec(BaseModel):
                 "fan_standard": self.fan_standard.value if self.fan_standard else None,
                 "flange_thickness": float(self.flange_thickness),
                 "guide_vanes": int(self.guide_vanes),
+                "height_profile_ctrl": [float(v) for v in self.height_profile_ctrl],
                 "inlet_shape": self.inlet_shape.value,
                 "offset_x": float(self.offset_x),
                 "offset_y": float(self.offset_y),
                 "outlet_shape": self.outlet_shape.value,
                 "preserve_normal_thickness": bool(self.preserve_normal_thickness),
+                "width_profile_ctrl": [float(v) for v in self.width_profile_ctrl],
             })
         return base
 

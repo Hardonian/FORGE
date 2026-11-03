@@ -120,6 +120,20 @@ def interpolate_morphed_ring(
     ]
 
 
+def evaluate_bezier_scalar(start_val: float, interior_ctrl: List[float], end_val: float, t: float) -> float:
+    """Evaluate a 1D Bernstein-Bezier curve at t in [0, 1] with given interior control points."""
+    if not interior_ctrl:
+        return start_val + t * (end_val - start_val)
+    pts = [start_val] + list(interior_ctrl) + [end_val]
+    n = len(pts) - 1
+    val = 0.0
+    for i, p_val in enumerate(pts):
+        binom = math.comb(n, i)
+        basis = binom * ((1.0 - t) ** (n - i)) * (t ** i)
+        val += basis * p_val
+    return val
+
+
 def build_duct_mesh(spec: DuctSpec, num_profile_points: int = 16, segments: int = 4) -> List[Triangle]:
     """Generate a watertight 2-manifold triangular mesh for the given DuctSpec."""
     is_simple = (
@@ -129,12 +143,14 @@ def build_duct_mesh(spec: DuctSpec, num_profile_points: int = 16, segments: int 
         and spec.offset_x == 0.0
         and spec.offset_y == 0.0
         and spec.guide_vanes == 0
+        and len(spec.width_profile_ctrl) == 0
+        and len(spec.height_profile_ctrl) == 0
         and not spec.preserve_normal_thickness
         and spec.flange_thickness == 0.0
     )
 
     n_pts = 4 if is_simple else max(16, (num_profile_points // 4) * 4)
-    n_segs = 1 if is_simple else max(2, segments)
+    n_segs = 1 if is_simple else max(8 if (spec.width_profile_ctrl or spec.height_profile_ctrl) else 2, segments)
 
     wall_x, wall_y, _ = compute_normal_wall_compensation(spec)
     wall_r = 0.5 * (wall_x + wall_y)
@@ -157,9 +173,9 @@ def build_duct_mesh(spec: DuctSpec, num_profile_points: int = 16, segments: int 
         cy = smooth_t * spec.offset_y
         center = Vec3(cx, cy, cz)
 
-        # Cross-sectional dimensions at fraction t
-        w = spec.inlet_width + t * (spec.outlet_width - spec.inlet_width)
-        h = spec.inlet_height + t * (spec.outlet_height - spec.inlet_height)
+        # Cross-sectional dimensions at fraction t (supports multi-point Bezier expansion laws)
+        w = evaluate_bezier_scalar(spec.inlet_width, spec.width_profile_ctrl, spec.outlet_width, t)
+        h = evaluate_bezier_scalar(spec.inlet_height, spec.height_profile_ctrl, spec.outlet_height, t)
         cur_corner_r = (1.0 - t) * spec.corner_radius + t * spec.corner_radius
 
         # Outer ring (supports continuous morphing between circular and rectangular ends)
