@@ -8,6 +8,7 @@ from .optimizer import (
     run_nsga2_optimization,
 )
 from .report import generate_html_report, generate_pareto_svg
+from .bezier_diffuser import compute_multi_station_diffuser_loss, optimize_bezier_diffuser
 
 __all__ = [
     "DuctSearchSpace",
@@ -20,4 +21,6 @@ __all__ = [
     "run_nsga2_optimization",
     "generate_html_report",
     "generate_pareto_svg",
+    "compute_multi_station_diffuser_loss",
+    "optimize_bezier_diffuser",
 ]

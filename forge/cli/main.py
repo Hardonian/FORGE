@@ -28,6 +28,9 @@ from forge.opt.optimizer import run_nsga2_optimization
 from forge.opt.report import generate_html_report
 from forge.lab.ingestion import compare_bench_to_simulation, ingest_telemetry_file
 from forge.lab.calibration import calibrate_sim2real_model
+from forge.physics.heatsink import HeatsinkSpec, solve_coupled_duct_heatsink_system
+from forge.physics.acoustics import design_acoustic_metamaterial_liner
+from forge.presets.catalog import get_preset_spec, list_presets
 
 app = typer.Typer(
     name="forge",
@@ -209,6 +212,84 @@ def lab(
     console.print(f"- Measured dP:  [green]{res.measured_delta_p_pa} Pa[/green]")
     console.print(f"- Discrepancy:  [bold]{res.delta_p_discrepancy_percent}%[/bold] ({res.status})")
     console.print(f"- Calibrated Roughness: [cyan]{cal.calibrated_roughness_mm} mm[/cyan] (RMSE reduced {cal.baseline_rmse_pa} -> {cal.calibrated_rmse_pa} Pa)")
+
+
+@app.command()
+def presets(
+    export_name: str = typer.Option("", "--export", "-e", help="Optional preset name to export to JSON"),
+    out: Path = typer.Option(Path("preset_duct.json"), "--out", "-o", help="Output JSON file path when exporting"),
+):
+    """List built-in AI accelerator cooling duct presets or export a preset to JSON."""
+    if export_name:
+        entry = get_preset_spec(export_name)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(entry["spec"].model_dump(mode="json"), indent=2) + "\n", encoding="utf-8")
+        console.print(f"[bold green][OK][/bold green] Exported preset [cyan]{export_name}[/cyan] to [green]{out}[/green]")
+        return
+
+    table = Table(title="FORGE Hardware Accelerator Presets")
+    table.add_column("Preset Name", style="cyan bold")
+    table.add_column("Fan Standard", style="green")
+    table.add_column("Material", style="yellow")
+    table.add_column("Description", style="white")
+    for p in list_presets():
+        table.add_row(
+            p["name"],
+            str(p["spec"].get("fan_standard") or "custom"),
+            p["spec"]["material"],
+            p["description"],
+        )
+    console.print(table)
+
+
+@app.command()
+def heatsink(
+    spec_path: Path = typer.Argument(..., help="Path to duct JSON specification"),
+    watts: float = typer.Option(400.0, "--watts", help="Accelerator TDP heat load in Watts"),
+    fins: int = typer.Option(54, "--fins", help="Number of parallel cooling fins"),
+    material: str = typer.Option("COPPER", "--material", help="Heatsink material (COPPER or ALUMINUM_6063)"),
+):
+    """Solve coupled Fan + Duct + Finned Heatsink conjugate heat transfer and junction temperatures."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    hs = HeatsinkSpec(
+        width_mm=spec.outlet_width,
+        fin_height_mm=max(10.0, spec.outlet_height - 4.0),
+        fin_count=fins,
+        material=material,
+    )
+    conds = PhysicsConditions(heat_dissipation_watts=watts)
+    rep = solve_coupled_duct_heatsink_system(spec, hs, conds)
+
+    table = Table(title=f"Coupled Conjugate Heat Transfer ({watts} W, {fins} {material} Fins)")
+    table.add_column("System Metric", style="cyan")
+    table.add_column("Value", style="green bold")
+    table.add_row("Equilibrium System Airflow", f"{rep.equilibrium_flow_cfm:.1f} CFM")
+    table.add_row("Duct Pressure Drop", f"{rep.duct_pressure_drop_pa:.2f} Pa")
+    table.add_row("Heatsink Fin-Array dP", f"{rep.heatsink_pressure_drop_pa:.2f} Pa")
+    table.add_row("Total System dP", f"{rep.total_system_pressure_drop_pa:.2f} Pa")
+    table.add_row("Convective Heat Transfer (h)", f"{rep.convective_h_w_m2k:.1f} W/(m^2*K)")
+    table.add_row("Fin Efficiency (eta_f)", f"{rep.fin_efficiency * 100.0:.1f} %")
+    table.add_row("Total Thermal Resistance", f"{rep.heatsink_thermal_resistance_k_w:.4f} K/W")
+    table.add_row("Mean Die Temperature", f"{rep.mean_die_temp_c:.1f} C")
+    table.add_row("Hotspot Die Temperature", f"{rep.hotspot_die_temp_c:.1f} C")
+    table.add_row("Thermal Margin to Throttle", f"{rep.thermal_margin_c:.1f} C ({'SAFE' if not rep.throttling_risk else 'THROTTLE RISK'})")
+    console.print(table)
+
+
+@app.command()
+def acoustics(
+    rpm: int = typer.Option(8500, "--rpm", help="Server fan speed in RPM"),
+    blades: int = typer.Option(7, "--blades", help="Number of fan rotor blades"),
+    depth_mm: float = typer.Option(10.0, "--depth", help="Available liner cavity depth in mm"),
+):
+    """Design a tuned Helmholtz / quarter-wave acoustic metamaterial liner for fan BPF suppression."""
+    des = design_acoustic_metamaterial_liner(fan_rpm=rpm, blade_count=blades, max_cavity_depth_mm=depth_mm)
+    console.print(f"[bold cyan]Tuned Acoustic Metamaterial Liner[/bold cyan] ({rpm} RPM, {blades} blades)")
+    console.print(f"- Blade Passing Frequency (BPF): [green]{des.blade_passing_freq_hz} Hz[/green] (Harmonics: {des.harmonics_hz} Hz)")
+    console.print(f"- Quarter-Wave Folded Length:    [yellow]{des.quarter_wave_length_mm} mm[/yellow]")
+    console.print(f"- Helmholtz Cell Footprint:      [yellow]{des.helmholtz_cavity_width_mm} x {des.helmholtz_cavity_width_mm} x {des.helmholtz_cavity_depth_mm} mm[/yellow]")
+    console.print(f"- Perforation Porosity:          [yellow]{des.perforation_porosity_pct} %[/yellow]")
+    console.print(f"- Peak BPF Transmission Loss:    [bold green]-{des.peak_transmission_loss_db} dB[/bold green] (Stopband: {des.effective_stopband_hz[0]} - {des.effective_stopband_hz[1]} Hz)")
 
 
 @app.command()

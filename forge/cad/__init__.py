@@ -17,6 +17,12 @@ from .exporters import (
     export_glb,
 )
 from .dfm import analyze_dfm, PRINTER_BED_LIMITS
+from .manifold import ManifoldBranch, ManifoldSpec, branch_to_duct_spec, build_manifold_mesh
+from .honeycomb import (
+    HoneycombStatorSpec,
+    generate_honeycomb_stator_mesh,
+    evaluate_honeycomb_hydraulics,
+)
 
 __all__ = [
     "build_duct_mesh",
@@ -36,4 +42,11 @@ __all__ = [
     "export_glb",
     "analyze_dfm",
     "PRINTER_BED_LIMITS",
+    "ManifoldBranch",
+    "ManifoldSpec",
+    "branch_to_duct_spec",
+    "build_manifold_mesh",
+    "HoneycombStatorSpec",
+    "generate_honeycomb_stator_mesh",
+    "evaluate_honeycomb_hydraulics",
 ]

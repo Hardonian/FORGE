@@ -16,8 +16,14 @@ from forge.cad.exporters import (
     export_glb,
 )
 from forge.physics.solver_1d import solve_duct_physics
+from forge.physics.heatsink import HeatsinkSpec, solve_coupled_duct_heatsink_system
+from forge.physics.network_solver import auto_balance_manifold, solve_manifold_network
+from forge.physics.acoustics import design_acoustic_metamaterial_liner
+from forge.cad.manifold import ManifoldSpec, build_manifold_mesh
 from forge.opt.search_space import DuctSearchSpace
 from forge.opt.optimizer import run_nsga2_optimization
+from forge.opt.bezier_diffuser import optimize_bezier_diffuser
+from forge.presets.catalog import get_preset_spec, list_presets
 
 app = FastAPI(
     title="FORGE Inverse-Design Platform API",
@@ -93,6 +99,101 @@ def optimize_endpoint(
             for c in pareto
         ],
     }
+
+
+@app.get("/api/v1/presets")
+def presets_endpoint():
+    """Return all curated datacenter and workstation AI accelerator presets."""
+    return {"presets": list_presets()}
+
+
+@app.get("/api/v1/presets/{preset_name}")
+def preset_detail_endpoint(preset_name: str):
+    """Retrieve a specific hardware preset by name."""
+    entry = get_preset_spec(preset_name)
+    return {
+        "name": preset_name,
+        "description": entry["description"],
+        "spec": entry["spec"].model_dump(mode="json"),
+        "conditions": entry["conditions"].model_dump(mode="json"),
+    }
+
+
+@app.post("/api/v1/heatsink")
+def coupled_heatsink_endpoint(
+    duct: DuctSpec,
+    heatsink: Optional[HeatsinkSpec] = None,
+    conditions: Optional[PhysicsConditions] = None,
+):
+    """Solve coupled Fan + Duct + Finned Heatsink conjugate heat transfer and equilibrium flow."""
+    if heatsink is None:
+        heatsink = HeatsinkSpec(width_mm=duct.outlet_width, fin_height_mm=max(10.0, duct.outlet_height - 4.0))
+    if conditions is None:
+        conditions = PhysicsConditions()
+    report = solve_coupled_duct_heatsink_system(duct, heatsink, conditions)
+    return report.model_dump()
+
+
+@app.post("/api/v1/manifold")
+def manifold_endpoint(
+    spec: ManifoldSpec,
+    total_flow_cfm: float = 180.0,
+    auto_balance: bool = False,
+):
+    """Solve parallel hydraulic and thermal distribution across a 1-to-N splitter manifold."""
+    if auto_balance:
+        opt_spec, report, summary = auto_balance_manifold(spec, total_flow_cfm)
+        tris = build_manifold_mesh(opt_spec)
+        return {
+            "manifold_spec": opt_spec.model_dump(mode="json"),
+            "network_report": report.model_dump(),
+            "balance_summary": summary,
+            "triangle_count": len(tris),
+        }
+    report = solve_manifold_network(spec, total_flow_cfm)
+    tris = build_manifold_mesh(spec)
+    return {
+        "manifold_spec": spec.model_dump(mode="json"),
+        "network_report": report.model_dump(),
+        "triangle_count": len(tris),
+    }
+
+
+@app.post("/api/v1/bezier-optimize")
+def bezier_optimize_endpoint(
+    spec: DuctSpec,
+    conditions: Optional[PhysicsConditions] = None,
+    num_control_points: int = 2,
+    iterations: int = 25,
+):
+    """Synthesize a non-linear Stratford / bell-mouth Bezier diffuser expansion profile."""
+    if conditions is None:
+        conditions = PhysicsConditions()
+    opt_spec, opt_metrics, summary = optimize_bezier_diffuser(
+        spec, conditions, num_control_points=num_control_points, iterations=iterations
+    )
+    return {
+        "optimized_spec": opt_spec.model_dump(mode="json"),
+        "optimized_physics": opt_metrics.model_dump(),
+        "summary": summary,
+    }
+
+
+@app.post("/api/v1/acoustics")
+def acoustic_liner_endpoint(
+    fan_rpm: int = 8500,
+    blade_count: int = 7,
+    air_temp_c: float = 30.0,
+    max_cavity_depth_mm: float = 10.0,
+):
+    """Design a tuned sub-wavelength Helmholtz / quarter-wave acoustic metamaterial liner for fan BPF suppression."""
+    design = design_acoustic_metamaterial_liner(
+        fan_rpm=fan_rpm,
+        blade_count=blade_count,
+        air_temp_c=air_temp_c,
+        max_cavity_depth_mm=max_cavity_depth_mm,
+    )
+    return design.model_dump()
 
 
 @app.post("/api/v1/export/stl")
