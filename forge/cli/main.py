@@ -31,6 +31,10 @@ from forge.lab.calibration import calibrate_sim2real_model
 from forge.physics.heatsink import HeatsinkSpec, solve_coupled_duct_heatsink_system
 from forge.physics.acoustics import design_acoustic_metamaterial_liner
 from forge.presets.catalog import get_preset_spec, list_presets
+from forge.cad.slicer import export_production_slicer_3mf
+from forge.copilot.agent import synthesize_from_prompt
+from forge.topopt.darcy_solver import run_fluid_topology_optimization
+from forge.cloud.rack_twin import evaluate_datacenter_rack_roi
 
 app = typer.Typer(
     name="forge",
@@ -290,6 +294,80 @@ def acoustics(
     console.print(f"- Helmholtz Cell Footprint:      [yellow]{des.helmholtz_cavity_width_mm} x {des.helmholtz_cavity_width_mm} x {des.helmholtz_cavity_depth_mm} mm[/yellow]")
     console.print(f"- Perforation Porosity:          [yellow]{des.perforation_porosity_pct} %[/yellow]")
     console.print(f"- Peak BPF Transmission Loss:    [bold green]-{des.peak_transmission_loss_db} dB[/bold green] (Stopband: {des.effective_stopband_hz[0]} - {des.effective_stopband_hz[1]} Hz)")
+
+
+@app.command()
+def copilot(
+    prompt: str = typer.Argument(..., help="Natural language engineering prompt"),
+    out: Path = typer.Option(Path("runs/copilot"), "--out", "-o", help="Output directory for spec and 3MF"),
+):
+    """Synthesize an obstacle-routed, Bezier-optimized cooling duct directly from a natural language prompt."""
+    res = synthesize_from_prompt(prompt)
+    out.mkdir(parents=True, exist_ok=True)
+    spec_file = out / "synthesized_duct.json"
+    slicer_file = out / "production_duct.3mf"
+    spec_file.write_text(json.dumps(res.spec.model_dump(mode="json"), indent=2) + "\n", encoding="utf-8")
+    slicer_file.write_bytes(export_production_slicer_3mf(res.spec, printer_profile=res.target_printer))
+
+    console.print("[bold cyan]FORGE Design Copilot Synthesis[/bold cyan]")
+    for step in res.reasoning_trace:
+        console.print(f"  - {step}")
+    console.print(
+        f"[bold green][OK][/bold green] Saved spec to [cyan]{spec_file}[/cyan] and slicer 3MF to [cyan]{slicer_file}[/cyan] "
+        f"(dP={res.physics.total_pressure_drop_pa} Pa, gamma={res.physics.flow_uniformity_index})"
+    )
+
+
+@app.command()
+def slicer(
+    spec_path: Path = typer.Argument(..., help="Path to duct JSON specification"),
+    out: Path = typer.Option(Path("production_slicer.3mf"), "--out", "-o", help="Output .3mf file path"),
+    printer: str = typer.Option("Bambu_Lab_X1C", "--printer", help="Target 3D printer profile"),
+):
+    """Export a production-ready 3MF container with filament profiles and interlocking split flanges."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    payload = export_production_slicer_3mf(spec, printer_profile=printer)
+    out.write_bytes(payload)
+    console.print(f"[bold green][OK][/bold green] Exported production slicer 3MF ({len(payload)} bytes) to [cyan]{out}[/cyan]")
+
+
+@app.command()
+def topopt(
+    spec_path: Path = typer.Argument(..., help="Path to baseline duct JSON specification"),
+    out: Path = typer.Option(Path("runs/topopt"), "--out", "-o", help="Output directory"),
+    iterations: int = typer.Option(15, "--iter", help="Brinkman-Darcy optimization iterations"),
+):
+    """Run Navier-Stokes Brinkman-Darcy fluid topology optimization and extract organic 3D mesh."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    res, tris = run_fluid_topology_optimization(spec, iterations=iterations)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "topopt_spec.json").write_text(json.dumps(res.optimized_spec.model_dump(mode="json"), indent=2) + "\n", encoding="utf-8")
+    (out / "topopt_duct.stl").write_bytes(export_binary_stl(tris))
+    console.print(
+        f"[bold green][OK][/bold green] Brinkman-Darcy TopOpt complete: dissipation reduced by [bold]{res.dissipation_reduction_pct}%[/bold], "
+        f"dP: {res.baseline_dp_pa} -> {res.optimized_dp_pa} Pa, extracted vanes: {res.extracted_guide_vanes}"
+    )
+
+
+@app.command()
+def rack_roi(
+    spec_path: Path = typer.Argument(..., help="Path to FORGE duct JSON specification"),
+):
+    """Evaluate enterprise datacenter 42U rack power savings, CO2 reduction, and financial payback."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    rep = evaluate_datacenter_rack_roi(spec)
+    table = Table(title=f"Datacenter Rack Digital Twin & ROI ({rep.rack_id}, {rep.total_gpus_in_rack} GPUs)")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green bold")
+    table.add_row("OEM vs FORGE Pressure Drop", f"{rep.oem_duct_pressure_drop_pa} Pa -> {rep.forge_duct_pressure_drop_pa} Pa (-{rep.pressure_drop_reduction_pct}%)")
+    table.add_row("Fan Power Saved per Rack", f"{rep.fan_power_saved_watts_per_rack} W")
+    table.add_row("Annual Savings per Rack", f"${rep.annual_savings_usd_per_rack:,.2f} / yr ({rep.annual_energy_saved_kwh_per_rack:,.1f} kWh)")
+    table.add_row("100-Rack Cluster Savings", f"${rep.cluster_100_rack_annual_savings_usd:,.2f} / yr")
+    table.add_row("CO2 Reduction (100 Racks)", f"{rep.co2_metric_tons_saved_per_year_100_racks} metric tons / yr")
+    table.add_row("Hotspot Temp Reduction", f"-{rep.hotspot_temp_reduction_c} C")
+    table.add_row("Additive Retrofit Payback", f"{rep.payback_period_days} days")
+    console.print(table)
 
 
 @app.command()
