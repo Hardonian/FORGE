@@ -60,7 +60,7 @@ FORGE bridges the loop between **computational geometry**, **automated computati
 
 ## Architecture
 
-```
+```text
 forge/
 ├── core/         # Geometric primitives (Vec3, Triangle), Pydantic v2 schemas, canonical hashing
 ├── cad/          # Parametric lofting, server fan flanges, 3MF/STL/STEP exporters, DFM analysis
@@ -97,6 +97,7 @@ pip install -e .[dev]
 FORGE provides a unified CLI with subcommands:
 
 ### 1. Generate 3D Meshes (STL, 3MF, STEP, OBJ)
+
 ```bash
 # Export standard ASCII STL
 python -m forge generate examples/duct.json --out runs/example --format stl
@@ -112,18 +113,23 @@ python -m forge generate examples/duct.json --out runs/example --format step
 ```
 
 ### 2. Aerodynamic & Thermal Simulation
+
 ```bash
 python -m forge simulate examples/duct.json --cfm 150 --watts 400
 ```
+
 *Outputs flow velocities, Reynolds number, friction loss, minor expansion loss, total pressure drop $\Delta P$, velocity uniformity $\gamma$, and estimated air temperature rise.*
 
 ### 3. DFM Printability & Thermal Assessment
+
 ```bash
 python -m forge dfm examples/duct.json --printer Bambu_Lab_X1C
 ```
+
 *Outputs solid mass (g), print time (hrs), overhang angle checks, build bed volume fit, and material thermal creep warnings.*
 
 ### 4. Automated CFD Case Generation
+
 ```bash
 # Generate OpenFOAM simpleFoam case
 python -m forge openfoam examples/duct.json --out runs/openfoam_case --cfm 150
@@ -133,21 +139,27 @@ python -m forge su2 examples/duct.json --out runs/su2.cfg --cfm 150
 ```
 
 ### 5. Multi-Objective Generative Optimization (NSGA-II)
+
 ```bash
 python -m forge optimize --pop 20 --gen 5 --out runs/optimization
 ```
+
 *Synthesizes Pareto-optimal trade-offs and produces an interactive standalone report at `runs/optimization/optimization_report.html`.*
 
 ### 6. Hardware Sim2Real Telemetry Ingestion
+
 ```bash
 python -m forge lab telemetry.json examples/duct.json
 ```
+
 *Calculates physical measurement discrepancy against simulation predictions.*
 
 ### 7. Interactive 3D Web Studio & REST API
+
 ```bash
 python -m forge serve --port 8000
 ```
+
 *Navigate to `http://127.0.0.1:8000/viewer` to view and interact with ducts in real-time 3D WebGL.*
 
 ---
