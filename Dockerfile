@@ -15,3 +15,4 @@ RUN pip install --no-cache-dir --upgrade pip && \
 EXPOSE 8000
 
 CMD ["python", "-m", "forge", "serve", "--host", "0.0.0.0", "--port", "8000"]
+

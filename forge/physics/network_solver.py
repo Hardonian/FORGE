@@ -157,3 +157,4 @@ def auto_balance_manifold(
         "balanced_pressure_drop_pa": final_rep.total_manifold_pressure_drop_pa,
     }
     return (balanced_spec, final_rep, summary)
+

@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import List
 from pydantic import BaseModel, Field, model_validator
-from forge.core.geometry import Triangle
+from forge.core.geometry import Triangle, Vec3
 from forge.core.models import CrossSectionShape, DuctSpec
 from forge.cad.mesh import build_duct_mesh
 
@@ -89,12 +89,13 @@ def build_manifold_mesh(spec: ManifoldSpec, segments: int = 8) -> List[Triangle]
         x_shift = -0.5 * spec.inlet_width + (idx + 0.5) * slice_w
         z_shift = spec.plenum_length
 
+        shift_vec = Vec3(x_shift, 0.0, z_shift)
         for tri in b_tris:
             triangles.append(
                 Triangle(
-                    a=tri.a.add(type(tri.a)(x_shift, 0.0, z_shift)),
-                    b=tri.b.add(type(tri.b)(x_shift, 0.0, z_shift)),
-                    c=tri.c.add(type(tri.c)(x_shift, 0.0, z_shift)),
+                    a=tri.a + shift_vec,
+                    b=tri.b + shift_vec,
+                    c=tri.c + shift_vec,
                 )
             )
 

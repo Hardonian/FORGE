@@ -33,13 +33,20 @@ FORGE bridges the loop between **computational geometry**, **automated computati
 * **Multi-Physics & Automated CFD Generation (`forge.physics`):**
   * High-fidelity 1D/2D analytical and empirical solver: exact Ramanujan ellipse / rounded-rect hydraulic diameters, Swamee-Jain friction, Idelchik diffuser loss with corner fillet secondary-flow suppression, and S-curve Dean vortex loss.
   * **Fan $P-Q$ Curve Operating Point Solver (`solve_fan_operating_point`):** Bisection solver intersecting non-linear server fan curves (`SanAce_40mm_1U`, `Delta_80mm_Server`, `Delta_120mm_HighSpeed`, `Noctua_140mm_Industrial`) with system impedance.
-  * **Aeroacoustics & Structural Mechanics:** Curle dipole aeroacoustic vortex-shedding noise (`acoustic_noise_dba`) and Roark flat-plate structural wall deflection (`max_wall_deflection_um`) under internal static pressure.
+  * **Aeroacoustics & Metamaterial Liners:** Curle dipole aeroacoustic vortex-shedding noise (`acoustic_noise_dba`) and tuned sub-wavelength Helmholtz / quarter-wave metamaterial liner synthesis (`design_acoustic_metamaterial_liner`) to cancel fan Blade Passing Frequency ($f_{\text{BPF}}$) tones.
+  * **Coupled Conjugate Heat Transfer (CHT) Heatsink Solver (`forge.physics.heatsink`):** End-to-end Fan + Duct + Finned Heatsink solver (`solve_coupled_duct_heatsink_system`) computing developing channel friction (Shah & London), Kays & London entrance/exit losses, Gnielinski/Muzychka Nusselt numbers, fin efficiency ($\eta_f$), and GPU die hotspot temperatures under outlet velocity maldistribution.
+  * **Multi-Branch $1 \to N$ Splitter Manifolds (`forge.cad.manifold`, `forge.physics.network_solver`):** Parametric $1 \to N$ splitter manifold CAD mesh generation (`build_manifold_mesh`), parallel conductance hydraulic/thermal equilibrium solver (`solve_manifold_network`), and automated branch sizing (`auto_balance_manifold`) for isothermal multi-GPU cooling.
+  * **Swirl-Canceling Honeycomb Stators (`forge.cad.honeycomb`):** Parametric cellular flow-straightener mesh and Idelchik screen hydraulics (`evaluate_honeycomb_hydraulics`).
   * Automated **OpenFOAM** `simpleFoam` case generator with $k-\omega$ SST turbulence, 3-layer prism boundary layer inflation (`addLayersControls`), and negative fluid domain extraction.
   * Automated **SU2** incompressible RANS configuration generator (`duct_cfd.cfg`).
-* **Multi-Objective Inverse Design (`forge.opt`):**
+* **Multi-Objective & Gradient Inverse Design (`forge.opt`):**
+  * **Stratford / Bell-Mouth Multi-Station Bézier Diffuser Optimizer (`optimize_bezier_diffuser`):** Gradient-based non-linear expansion profile synthesis that expands rapidly while boundary-layer kinetic energy is high and gently decelerates near the exit to suppress separation.
   * Latin Hypercube Sampling (LHS) across bounded parameter search spaces (`inlet`, `outlet`, `length`, `vanes`, `corner_radius`).
   * Full NSGA-II genetic algorithm (`fast_non_dominated_sort`, `compute_crowding_distances`, crowded binary tournament selection) synthesizing Pareto-optimal designs balancing **minimum pressure drop ($\Delta P$)**, **maximum velocity uniformity ($\gamma$)**, and **minimum material-specific mass**.
   * Automated HTML engineering reports with embedded interactive SVG Pareto trade-off charts.
+* **Persistent SQLite Digital Twin Registry & Hardware Presets (`forge.registry`, `forge.presets`):**
+  * Zero-dependency SQLite lineage store (`ForgeRegistry`) tracking SHA-256 canonical hashes, physics/DFM evaluations, Pareto queries, surrogate training datasets, and Sim2Real telemetry runs.
+  * Built-in hardware accelerator presets (`H100_PCIe_1U_SanAce40`, `L40S_80mm_Server_Duct`, `RTX_4090_120mm_Blower_Conversion`, `MI300X_OAM_120mm_HighFlow`, `Quiet_Workstation_140mm_GPU`).
 * **Sim2Real Hardware Test Bench Calibration (`forge.lab`):**
   * Telemetry schema for physical wind tunnel / flow bench instrumentation (differential pressure transducers, anemometers, thermocouples).
   * Golden-section search (`calibrate_surface_roughness`) and joint 2D alternating coordinate descent (`calibrate_sim2real_model`) calibrating both empirical print roughness ($\varepsilon$) and minor loss multiplier ($K_{\text{mult}}$).

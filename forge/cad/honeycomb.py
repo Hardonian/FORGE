@@ -94,3 +94,4 @@ def evaluate_honeycomb_hydraulics(
         "pressure_drop_pa": round(dp_pa, 2),
         "swirl_attenuation_pct": round(min(99.5, swirl_reduction_pct), 2),
     }
+

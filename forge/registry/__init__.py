@@ -2,3 +2,4 @@
 from forge.registry.store import ForgeRegistry
 
 __all__ = ["ForgeRegistry"]
+

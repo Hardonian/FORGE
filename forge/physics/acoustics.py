@@ -53,7 +53,9 @@ def design_acoustic_metamaterial_liner(
     l_neck_m = neck_length_mm / 1000.0
     # End correction delta_L = 0.85 * d_neck
     l_eff_m = l_neck_m + 0.85 * d_neck_m
-    s_neck_m2 = math.pi * ((0.5 * d_neck_m) ** 2)
+    # Multi-orifice micro-perforated faceplate (4 necks per resonator unit cell)
+    orifices_per_cell = 4
+    s_neck_m2 = orifices_per_cell * math.pi * ((0.5 * d_neck_m) ** 2)
 
     v_cavity_m3 = s_neck_m2 * ((c_sound / (2.0 * math.pi * f_bpf)) ** 2) / max(1e-6, l_eff_m)
     v_cavity_mm3 = v_cavity_m3 * 1e9
@@ -62,11 +64,21 @@ def design_acoustic_metamaterial_liner(
     # Square unit-cell cavity footprint width W_cav = sqrt(V_cavity / depth)
     cell_width_mm = math.sqrt(max(4.0, v_cavity_mm3 / depth_mm))
 
-    porosity_pct = min(35.0, max(1.0, 100.0 * (math.pi * ((0.5 * neck_diameter_mm) ** 2)) / (cell_width_mm ** 2)))
+    porosity_pct = min(
+        35.0,
+        max(1.5, 100.0 * (orifices_per_cell * math.pi * ((0.5 * neck_diameter_mm) ** 2)) / (cell_width_mm ** 2)),
+    )
 
-    # Transmission Loss (TL) at resonance for grazing-incidence Helmholtz liner array:
-    # TL = 20 * log10(1 + (sigma_p * c) / (2 * f_BPF * l_eff * damping_factor))
-    tl_db = min(24.0, max(6.0, 10.0 * math.log10(1.0 + 42.0 * (porosity_pct / 100.0) * (depth_mm / neck_length_mm))))
+    # Ingard / Maa viscous acoustic resistance of resonant orifices normalized by rho*c:
+    # r_norm = (sqrt(8 * nu_air * omega) / (sigma_p * c)) * (1 + l_neck / d_neck)
+    nu_air = 1.56e-5  # Kinematic viscosity of air (m^2/s)
+    omega = 2.0 * math.pi * f_bpf
+    sigma_frac = porosity_pct / 100.0
+    r_norm = (math.sqrt(8.0 * nu_air * omega) / max(1e-5, sigma_frac * c_sound)) * (1.0 + l_neck_m / d_neck_m)
+    # Grazing-incidence transmission loss across a lined duct section (S_liner / S_duct ~ 2.4):
+    # TL = 20 * log10(1 + (S_liner / S_duct) / (2 * r_norm))
+    liner_area_ratio = 2.4
+    tl_db = min(26.0, max(6.0, 20.0 * math.log10(1.0 + liner_area_ratio / max(0.02, 2.0 * r_norm))))
 
     bandwidth_hz = f_bpf * 0.18
     stopband = [round(f_bpf - 0.5 * bandwidth_hz, 1), round(f_bpf + 0.5 * bandwidth_hz, 1)]

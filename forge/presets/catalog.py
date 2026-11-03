@@ -142,3 +142,4 @@ def get_preset_spec(name: str) -> Dict[str, Any]:
         if k.lower() == name.lower():
             return v
     raise KeyError(f"Unknown hardware preset '{name}'. Available: {list(HARDWARE_PRESETS.keys())}")
+

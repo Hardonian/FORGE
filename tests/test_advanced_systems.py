@@ -213,3 +213,4 @@ def test_presets_and_new_api_cli_endpoints(tmp_path: Path):
 
     res_ac_cli = runner.invoke(cli_app, ["acoustics", "--rpm", "9000", "--blades", "7"])
     assert res_ac_cli.exit_code == 0
+

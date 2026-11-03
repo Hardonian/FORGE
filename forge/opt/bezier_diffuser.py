@@ -196,3 +196,4 @@ def optimize_bezier_diffuser(
         "optimized_uniformity": opt_metrics.flow_uniformity_index,
     }
     return (opt_spec, opt_metrics, summary)
+

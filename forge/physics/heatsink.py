@@ -191,3 +191,4 @@ def solve_coupled_duct_heatsink_system(
         "duct_pressure_drop_pa": round(dp_duct_eq, 2),
         "total_system_pressure_drop_pa": round(dp_duct_eq + final_rep.heatsink_pressure_drop_pa, 2),
     })
+
