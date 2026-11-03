@@ -20,6 +20,17 @@ from forge.copilot.agent import synthesize_from_prompt
 from forge.core.models import DuctMaterial, DuctSpec, ObstacleBox, PhysicsConditions
 from forge.surrogate.fno_field import predict_flow_field
 from forge.topopt.darcy_solver import run_fluid_topology_optimization
+from forge.cad.cad_plugins import (
+    export_freecad_macro,
+    export_onshape_featurescript,
+    export_openscad_script,
+)
+from forge.physics.structural_modal import analyze_structural_modal_resonance
+from forge.physics.transient_thermal import simulate_transient_thermal_response
+from forge.compliance.dossier import (
+    export_compliance_dossier_markdown,
+    generate_compliance_dossier,
+)
 
 
 def test_obstacle_clearance_and_auto_routing():
@@ -215,4 +226,83 @@ def test_phase1_2_3_api_and_cli_integration(tmp_path: Path):
 
     res_cli_roi = runner.invoke(cli_app, ["rack-roi", str(cop_dir / "synthesized_duct.json")])
     assert res_cli_roi.exit_code == 0
+
+
+def test_cad_plugins_modal_transient_and_compliance_dossier(tmp_path: Path):
+    """Verify Onshape/FreeCAD/OpenSCAD codegen, structural modal solver, transient PID thermal sim, and UL94/ASHRAE dossier."""
+    spec = DuctSpec(
+        inlet_width=80.0,
+        inlet_height=80.0,
+        outlet_width=110.0,
+        outlet_height=42.0,
+        length=85.0,
+        wall=2.2,
+        guide_vanes=1,
+        material=DuctMaterial.PC_CF,
+    )
+
+    # 1. CAD Ecosystem Plugins
+    fs_code = export_onshape_featurescript(spec)
+    assert "FeatureScript 2411;" in fs_code
+    assert "opLoft" in fs_code
+
+    fc_code = export_freecad_macro(spec)
+    assert "Part.makeLoft" in fc_code
+
+    scad_code = export_openscad_script(spec)
+    assert "polyhedron(" in scad_code
+
+    # 2. Structural Modal Vibration & Harmonic Resonance
+    modal_rep = analyze_structural_modal_resonance(spec, fan_rpm=9000, blade_count=7)
+    assert modal_rep.fundamental_panel_freq_hz > 50.0
+    assert modal_rep.effective_youngs_modulus_mpa > 1000.0
+    assert len(modal_rep.higher_panel_modes_hz) == 3
+
+    # 3. Transient Thermal & Closed-Loop PID Fan PWM Simulator
+    trans_rep = simulate_transient_thermal_response(spec, idle_watts=60.0, burst_watts=400.0, duration_s=12.0, dt_s=1.0)
+    assert len(trans_rep.time_s) == 13
+    assert trans_rep.peak_hotspot_temp_c >= trans_rep.hotspot_die_temp_c[0]
+    assert trans_rep.fan_pwm_pct[-1] > trans_rep.fan_pwm_pct[0]
+
+    # 4. Enterprise Compliance Dossier (UL94, ASHRAE, NEBS)
+    dossier = generate_compliance_dossier(spec)
+    assert dossier.certificate_id.startswith("FORGE-CERT-")
+    assert "UL94 V-0" in dossier.ul94_flammability_rating
+    assert len(dossier.checks) == 5
+    md_cert = export_compliance_dossier_markdown(dossier)
+    assert "# FORGE Hardware Qualification & Compliance Dossier" in md_cert
+
+    # 5. API & CLI endpoints
+    client = TestClient(fastapi_app)
+    spec_json = spec.model_dump(mode="json")
+
+    r_mod = client.post("/api/v1/modal", json={"spec": spec_json})
+    assert r_mod.status_code == 200
+    assert r_mod.json()["fundamental_panel_freq_hz"] > 0.0
+
+    r_tr = client.post("/api/v1/transient?duration_s=6.0", json=spec_json)
+    assert r_tr.status_code == 200
+    assert r_tr.json()["peak_hotspot_temp_c"] > 25.0
+
+    r_comp = client.post("/api/v1/compliance", json={"spec": spec_json})
+    assert r_comp.status_code == 200
+    assert "FORGE-CERT-" in r_comp.json()["dossier"]["certificate_id"]
+
+    r_cad = client.post("/api/v1/export/cad-script?target_cad=onshape", json=spec_json)
+    assert r_cad.status_code == 200
+    assert "FeatureScript" in r_cad.json()["script"]
+
+    runner = CliRunner()
+    spec_file = tmp_path / "spec.json"
+    spec_file.write_text(json.dumps(spec_json), encoding="utf-8")
+
+    assert runner.invoke(cli_app, ["modal", str(spec_file)]).exit_code == 0
+    assert runner.invoke(cli_app, ["transient", str(spec_file), "--duration", "6"]).exit_code == 0
+    cert_file = tmp_path / "cert.md"
+    assert runner.invoke(cli_app, ["compliance", str(spec_file), "--out", str(cert_file)]).exit_code == 0
+    assert cert_file.exists()
+    fs_file = tmp_path / "duct.fs"
+    assert runner.invoke(cli_app, ["cad-script", str(spec_file), "--target", "onshape", "--out", str(fs_file)]).exit_code == 0
+    assert fs_file.exists()
+
 

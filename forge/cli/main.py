@@ -35,6 +35,17 @@ from forge.cad.slicer import export_production_slicer_3mf
 from forge.copilot.agent import synthesize_from_prompt
 from forge.topopt.darcy_solver import run_fluid_topology_optimization
 from forge.cloud.rack_twin import evaluate_datacenter_rack_roi
+from forge.cad.cad_plugins import (
+    export_freecad_macro,
+    export_onshape_featurescript,
+    export_openscad_script,
+)
+from forge.physics.structural_modal import analyze_structural_modal_resonance
+from forge.physics.transient_thermal import simulate_transient_thermal_response
+from forge.compliance.dossier import (
+    export_compliance_dossier_markdown,
+    generate_compliance_dossier,
+)
 
 app = typer.Typer(
     name="forge",
@@ -368,6 +379,76 @@ def rack_roi(
     table.add_row("Hotspot Temp Reduction", f"-{rep.hotspot_temp_reduction_c} C")
     table.add_row("Additive Retrofit Payback", f"{rep.payback_period_days} days")
     console.print(table)
+
+
+@app.command()
+def modal(
+    spec_path: Path = typer.Argument(..., help="Path to FORGE duct JSON specification"),
+    rpm: int = typer.Option(9000, "--rpm", help="Server fan speed in RPM"),
+    blades: int = typer.Option(7, "--blades", help="Number of fan blades"),
+):
+    """Analyze structural natural frequencies, temperature softening, and fan harmonic resonance."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    rep = analyze_structural_modal_resonance(spec, fan_rpm=rpm, blade_count=blades)
+    console.print(f"[bold cyan]Structural Modal & Harmonic Resonance Report[/bold cyan] ({rpm} RPM)")
+    console.print(f"- Fundamental Panel Freq (f_11): [green]{rep.fundamental_panel_freq_hz} Hz[/green] (Cantilever: {rep.cantilever_beam_freq_hz} Hz)")
+    console.print(f"- Fan Shaft / BPF Excitation:    [yellow]{rep.fan_shaft_freq_hz} Hz / {rep.fan_bpf_freq_hz} Hz[/yellow]")
+    console.print(f"- Min Harmonic Separation:       [bold]{rep.min_harmonic_separation_pct}%[/bold] (Resonance Risk: {rep.resonance_risk})")
+    console.print(f"- Flange Thermal Stress:         [yellow]{rep.flange_thermal_stress_mpa} MPa[/yellow] (Expansion: {rep.thermal_expansion_um} um)")
+
+
+@app.command()
+def transient(
+    spec_path: Path = typer.Argument(..., help="Path to FORGE duct JSON specification"),
+    burst_watts: float = typer.Option(450.0, "--watts", help="Burst GPU TDP in Watts"),
+    duration_s: float = typer.Option(20.0, "--duration", help="Simulation duration in seconds"),
+):
+    """Simulate time-domain transient die temperature and closed-loop PID fan PWM response."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    rep = simulate_transient_thermal_response(spec, burst_watts=burst_watts, duration_s=duration_s)
+    console.print(f"[bold cyan]Transient Thermal & PID Fan Response[/bold cyan] ({rep.idle_watts}W -> {rep.burst_watts}W)")
+    console.print(f"- Peak Hotspot Die Temp:    [yellow]{rep.peak_hotspot_temp_c} C[/yellow] (Final: {rep.final_hotspot_temp_c} C)")
+    console.print(f"- 90% Fan Spin-Up Time:     [green]{rep.fan_spinup_90pct_time_s} s[/green]")
+    console.print(f"- Thermal Throttling Risk:  {'[red]YES[/red]' if rep.thermal_throttling_triggered else '[green]NO[/green]'}")
+
+
+@app.command()
+def compliance(
+    spec_path: Path = typer.Argument(..., help="Path to FORGE duct JSON specification"),
+    out: Path = typer.Option(Path("compliance_dossier.md"), "--out", "-o", help="Output Markdown certificate path"),
+):
+    """Generate an enterprise UL94 / ASHRAE / NEBS hardware qualification dossier."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    dossier = generate_compliance_dossier(spec)
+    md = export_compliance_dossier_markdown(dossier)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(md, encoding="utf-8")
+    console.print(
+        f"[bold green][OK][/bold green] Generated Qualification Dossier [cyan]{dossier.certificate_id}[/cyan] "
+        f"({dossier.overall_qualification_status}) at [green]{out}[/green]"
+    )
+
+
+@app.command()
+def cad_script(
+    spec_path: Path = typer.Argument(..., help="Path to FORGE duct JSON specification"),
+    target: str = typer.Option("onshape", "--target", "-t", help="Target CAD ecosystem: onshape, freecad, openscad"),
+    out: Path = typer.Option(Path("forge_duct.fs"), "--out", "-o", help="Output CAD script file path"),
+):
+    """Export native parametric CAD code for Onshape (FeatureScript), FreeCAD (.FCMacro), or OpenSCAD (.scad)."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    t = target.lower()
+    if t == "onshape":
+        code = export_onshape_featurescript(spec)
+    elif t == "freecad":
+        code = export_freecad_macro(spec)
+    elif t == "openscad":
+        code = export_openscad_script(spec)
+    else:
+        raise typer.BadParameter(f"Unsupported CAD target '{target}'. Choose onshape, freecad, or openscad.")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(code, encoding="utf-8")
+    console.print(f"[bold green][OK][/bold green] Exported {target.upper()} parametric script to [cyan]{out}[/cyan]")
 
 
 @app.command()

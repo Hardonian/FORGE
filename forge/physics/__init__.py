@@ -16,6 +16,8 @@ from .network_solver import (
     auto_balance_manifold,
 )
 from .acoustics import AcousticLinerDesign, design_acoustic_metamaterial_liner
+from .structural_modal import ModalResonanceReport, analyze_structural_modal_resonance
+from .transient_thermal import TransientThermalReport, simulate_transient_thermal_response
 
 __all__ = [
     "solve_duct_physics",
@@ -34,4 +36,8 @@ __all__ = [
     "auto_balance_manifold",
     "AcousticLinerDesign",
     "design_acoustic_metamaterial_liner",
+    "ModalResonanceReport",
+    "analyze_structural_modal_resonance",
+    "TransientThermalReport",
+    "simulate_transient_thermal_response",
 ]

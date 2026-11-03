@@ -31,6 +31,17 @@ from forge.topopt.darcy_solver import run_fluid_topology_optimization
 from forge.surrogate.fno_field import predict_flow_field
 from forge.cloud.tenant import CloudEntitlementManager
 from forge.cloud.rack_twin import IPMITelemetryFrame, evaluate_datacenter_rack_roi
+from forge.cad.cad_plugins import (
+    export_freecad_macro,
+    export_onshape_featurescript,
+    export_openscad_script,
+)
+from forge.physics.structural_modal import analyze_structural_modal_resonance
+from forge.physics.transient_thermal import simulate_transient_thermal_response
+from forge.compliance.dossier import (
+    export_compliance_dossier_markdown,
+    generate_compliance_dossier,
+)
 
 _ENTITLEMENT_MANAGER = CloudEntitlementManager()
 
@@ -267,6 +278,62 @@ def enterprise_rack_roi_endpoint(
 def cloud_billing_endpoint(tenant_id: str):
     """Return multi-tenant SaaS subscription quota, compute credits, and billing summary."""
     return _ENTITLEMENT_MANAGER.get_billing_summary(tenant_id)
+
+
+@app.post("/api/v1/modal")
+def modal_resonance_endpoint(
+    spec: DuctSpec,
+    conditions: Optional[PhysicsConditions] = None,
+    fan_rpm: int = 9000,
+    blade_count: int = 7,
+):
+    """Analyze temperature-softened structural natural frequencies and fan harmonic resonance margins."""
+    rep = analyze_structural_modal_resonance(spec, conditions=conditions, fan_rpm=fan_rpm, blade_count=blade_count)
+    return rep.model_dump()
+
+
+@app.post("/api/v1/transient")
+def transient_thermal_endpoint(
+    spec: DuctSpec,
+    idle_watts: float = 65.0,
+    burst_watts: float = 450.0,
+    duration_s: float = 20.0,
+):
+    """Simulate time-domain transient die temperature and closed-loop PID fan PWM response under burst TDP."""
+    rep = simulate_transient_thermal_response(
+        spec, idle_watts=idle_watts, burst_watts=burst_watts, duration_s=duration_s
+    )
+    return rep.model_dump()
+
+
+@app.post("/api/v1/compliance")
+def compliance_dossier_endpoint(
+    spec: DuctSpec,
+    conditions: Optional[PhysicsConditions] = None,
+    fan_rpm: int = 9000,
+):
+    """Generate an enterprise UL94 / ASHRAE / NEBS hardware qualification dossier and Markdown certificate."""
+    dossier = generate_compliance_dossier(spec, conditions=conditions, fan_rpm=fan_rpm)
+    return {
+        "dossier": dossier.model_dump(mode="json"),
+        "markdown_certificate": export_compliance_dossier_markdown(dossier),
+    }
+
+
+@app.post("/api/v1/export/cad-script")
+def export_cad_script_endpoint(spec: DuctSpec, target_cad: str = "onshape"):
+    """Export native parametric CAD code for Onshape (FeatureScript), FreeCAD (.FCMacro), or OpenSCAD (.scad)."""
+    t = target_cad.lower()
+    if t == "onshape":
+        code = export_onshape_featurescript(spec)
+        return {"target_cad": "onshape", "filename": "forge_duct.fs", "script": code}
+    elif t == "freecad":
+        code = export_freecad_macro(spec)
+        return {"target_cad": "freecad", "filename": "forge_duct.FCMacro", "script": code}
+    elif t == "openscad":
+        code = export_openscad_script(spec)
+        return {"target_cad": "openscad", "filename": "forge_duct.scad", "script": code}
+    raise ValueError(f"Unsupported target_cad '{target_cad}'. Choose onshape, freecad, or openscad.")
 
 
 @app.post("/api/v1/export/slicer-3mf")

@@ -34,6 +34,11 @@ from .slicer import (
     export_production_slicer_3mf,
     split_duct_with_interlocking_flanges,
 )
+from .cad_plugins import (
+    export_freecad_macro,
+    export_onshape_featurescript,
+    export_openscad_script,
+)
 
 __all__ = [
     "build_duct_mesh",
@@ -67,4 +72,7 @@ __all__ = [
     "SLICER_MATERIAL_PROFILES",
     "export_production_slicer_3mf",
     "split_duct_with_interlocking_flanges",
+    "export_freecad_macro",
+    "export_onshape_featurescript",
+    "export_openscad_script",
 ]
