@@ -143,3 +143,4 @@ class CloudEntitlementManager:
             "overage_usd": round(overage_usd, 2),
             "estimated_total_invoice_usd": round(base_fee + overage_usd, 2),
         }
+

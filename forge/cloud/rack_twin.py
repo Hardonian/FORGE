@@ -111,3 +111,4 @@ def evaluate_datacenter_rack_roi(
         Additive_retrofit_cost_usd_per_rack=round(retrofit_cost_rack, 2),
         payback_period_days=round(payback_days, 1),
     )
+

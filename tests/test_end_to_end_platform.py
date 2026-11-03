@@ -215,3 +215,4 @@ def test_phase1_2_3_api_and_cli_integration(tmp_path: Path):
 
     res_cli_roi = runner.invoke(cli_app, ["rack-roi", str(cop_dir / "synthesized_duct.json")])
     assert res_cli_roi.exit_code == 0
+

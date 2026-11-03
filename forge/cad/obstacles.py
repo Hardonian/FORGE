@@ -190,3 +190,4 @@ def route_duct_around_obstacles(spec: DuctSpec) -> Tuple[DuctSpec, ObstacleClear
     })
     final_report = check_obstacle_clearances(routed_spec)
     return (routed_spec, final_report)
+

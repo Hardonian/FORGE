@@ -148,11 +148,11 @@ def _mesh_to_3mf_object_xml(object_id: int, object_name: str, triangles: List[Tr
 
     return (
         f'    <object id="{object_id}" name="{object_name}" type="model">\n'
-        f"      <mesh>\n"
-        f"        <vertices>\n" + "\n".join(v_lines) + "\n        </vertices>\n"
-        f"        <triangles>\n" + "\n".join(t_lines) + "\n        </triangles>\n"
-        f"      </mesh>\n"
-        f"    </object>"
+        "      <mesh>\n"
+        "        <vertices>\n" + "\n".join(v_lines) + "\n        </vertices>\n"
+        "        <triangles>\n" + "\n".join(t_lines) + "\n        </triangles>\n"
+        "      </mesh>\n"
+        "    </object>"
     )
 
 

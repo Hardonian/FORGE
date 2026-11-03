@@ -244,3 +244,4 @@ def synthesize_from_prompt(
         dp_target_met=dp_met,
         reasoning_trace=trace,
     )
+
