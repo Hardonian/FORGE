@@ -145,12 +145,20 @@ def build_duct_mesh(spec: DuctSpec, num_profile_points: int = 16, segments: int 
         and spec.guide_vanes == 0
         and len(spec.width_profile_ctrl) == 0
         and len(spec.height_profile_ctrl) == 0
+        and len(spec.centerline_x_ctrl) == 0
+        and len(spec.centerline_y_ctrl) == 0
         and not spec.preserve_normal_thickness
         and spec.flange_thickness == 0.0
     )
 
+    has_bezier = bool(
+        spec.width_profile_ctrl
+        or spec.height_profile_ctrl
+        or spec.centerline_x_ctrl
+        or spec.centerline_y_ctrl
+    )
     n_pts = 4 if is_simple else max(16, (num_profile_points // 4) * 4)
-    n_segs = 1 if is_simple else max(8 if (spec.width_profile_ctrl or spec.height_profile_ctrl) else 2, segments)
+    n_segs = 1 if is_simple else max(10 if has_bezier else 2, segments)
 
     wall_x, wall_y, _ = compute_normal_wall_compensation(spec)
     wall_r = 0.5 * (wall_x + wall_y)
@@ -169,8 +177,16 @@ def build_duct_mesh(spec: DuctSpec, num_profile_points: int = 16, segments: int 
         # S-curve Hermite smoothstep interpolation for centerline and shape morphing
         smooth_t = t * t * (3.0 - 2.0 * t)
         cz = t * spec.length
-        cx = smooth_t * spec.offset_x
-        cy = smooth_t * spec.offset_y
+        cx = (
+            evaluate_bezier_scalar(0.0, spec.centerline_x_ctrl, spec.offset_x, t)
+            if spec.centerline_x_ctrl
+            else smooth_t * spec.offset_x
+        )
+        cy = (
+            evaluate_bezier_scalar(0.0, spec.centerline_y_ctrl, spec.offset_y, t)
+            if spec.centerline_y_ctrl
+            else smooth_t * spec.offset_y
+        )
         center = Vec3(cx, cy, cz)
 
         # Cross-sectional dimensions at fraction t (supports multi-point Bezier expansion laws)

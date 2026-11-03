@@ -42,6 +42,24 @@ MATERIAL_PROPERTIES: Dict[str, Dict[str, float]] = {
 }
 
 
+class ObstacleBox(BaseModel):
+    """3D bounding box representing a physical motherboard/chassis obstacle (RAM stick, PCIe power cable, VRM heatsink)."""
+    name: str = Field("Obstacle", description="Human-readable identifier for the obstacle")
+    min_x: float = Field(..., description="Minimum X coordinate in mm")
+    max_x: float = Field(..., description="Maximum X coordinate in mm")
+    min_y: float = Field(..., description="Minimum Y coordinate in mm")
+    max_y: float = Field(..., description="Maximum Y coordinate in mm")
+    min_z: float = Field(..., description="Minimum Z coordinate in mm")
+    max_z: float = Field(..., description="Maximum Z coordinate in mm")
+    clearance_mm: float = Field(2.0, ge=0.0, description="Minimum required air-gap clearance around obstacle in mm")
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "ObstacleBox":
+        if self.max_x <= self.min_x or self.max_y <= self.min_y or self.max_z <= self.min_z:
+            raise ValueError("ObstacleBox max bounds must be strictly greater than min bounds")
+        return self
+
+
 class DuctSpec(BaseModel):
     """Full parametric specification for transition cooling ducts."""
     inlet_width: float = Field(..., gt=0, description="Outer inlet width in mm")
@@ -72,6 +90,18 @@ class DuctSpec(BaseModel):
         default_factory=list,
         description="Optional interior Bezier control points (in mm) for non-linear height expansion profile",
     )
+    centerline_x_ctrl: List[float] = Field(
+        default_factory=list,
+        description="Optional interior Bezier control points (in mm) for lateral X centerline routing around obstacles",
+    )
+    centerline_y_ctrl: List[float] = Field(
+        default_factory=list,
+        description="Optional interior Bezier control points (in mm) for vertical Y centerline routing around obstacles",
+    )
+    obstacles: List[ObstacleBox] = Field(
+        default_factory=list,
+        description="Optional 3D bounding-box obstacles that the duct must clear",
+    )
 
     # Mounting flange integration
     fan_standard: Optional[ServerFanStandard] = Field(None, description="Optional server fan standard for inlet flange")
@@ -97,6 +127,10 @@ class DuctSpec(BaseModel):
             for c_val in ctrl_list:
                 if not math.isfinite(c_val) or c_val <= self.wall * 2.0:
                     raise ValueError(f"{label} control point {c_val}mm must be finite and greater than 2 * wall ({self.wall * 2.0}mm)")
+        for c_list, label in ((self.centerline_x_ctrl, "centerline_x_ctrl"), (self.centerline_y_ctrl, "centerline_y_ctrl")):
+            for c_val in c_list:
+                if not math.isfinite(c_val):
+                    raise ValueError(f"{label} control point must be finite")
         return self
 
     def is_baseline_simple(self) -> bool:
@@ -111,6 +145,9 @@ class DuctSpec(BaseModel):
             and self.guide_vanes == 0
             and len(self.width_profile_ctrl) == 0
             and len(self.height_profile_ctrl) == 0
+            and len(self.centerline_x_ctrl) == 0
+            and len(self.centerline_y_ctrl) == 0
+            and len(self.obstacles) == 0
             and self.fan_standard is None
             and self.flange_thickness == 0.0
         )
@@ -143,6 +180,12 @@ class DuctSpec(BaseModel):
                 "preserve_normal_thickness": bool(self.preserve_normal_thickness),
                 "width_profile_ctrl": [float(v) for v in self.width_profile_ctrl],
             })
+            if self.centerline_x_ctrl:
+                base["centerline_x_ctrl"] = [float(v) for v in self.centerline_x_ctrl]
+            if self.centerline_y_ctrl:
+                base["centerline_y_ctrl"] = [float(v) for v in self.centerline_y_ctrl]
+            if self.obstacles:
+                base["obstacles"] = [obs.model_dump(mode="json") for obs in self.obstacles]
         return base
 
 
