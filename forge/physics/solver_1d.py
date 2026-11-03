@@ -9,7 +9,7 @@ from forge.core.models import (
     PhysicsConditions,
     PhysicsMetrics,
 )
-from forge.cad.mesh import compute_normal_wall_compensation
+from forge.cad.mesh import compute_normal_wall_compensation, evaluate_bezier_scalar
 
 
 # Industrial Server Fan P-Q Curve Parameters: (max_flow_cfm, max_static_pressure_pa)
@@ -121,6 +121,30 @@ def _compute_duct_dp_for_cfm(
     fillet_factor = 1.0 - 0.15 * fillet_ratio
 
     dp_expansion = k_minor * fillet_factor * conditions.minor_loss_multiplier * dynamic_head
+
+    # Non-linear Bezier diffuser profile adjustment (Stratford pressure recovery vs boundary layer fatigue)
+    if spec.width_profile_ctrl or spec.height_profile_ctrl:
+        num_st = 16
+        dz = length_m / float(num_st)
+        fatigue_penalty_sum = 0.0
+        linear_penalty_sum = 0.0
+        for s in range(num_st):
+            t0 = s / float(num_st)
+            t1 = (s + 1) / float(num_st)
+            w0 = evaluate_bezier_scalar(spec.inlet_width, spec.width_profile_ctrl, spec.outlet_width, t0) / 1000.0
+            w1 = evaluate_bezier_scalar(spec.inlet_width, spec.width_profile_ctrl, spec.outlet_width, t1) / 1000.0
+            h0 = evaluate_bezier_scalar(spec.inlet_height, spec.height_profile_ctrl, spec.outlet_height, t0) / 1000.0
+            h1 = evaluate_bezier_scalar(spec.inlet_height, spec.height_profile_ctrl, spec.outlet_height, t1) / 1000.0
+            tan_seg = max(abs(w1 - w0), abs(h1 - h0)) / (2.0 * dz)
+            tan_lin = max(delta_w, delta_h) / (2.0 * length_m)
+            # Boundary layer momentum thickness grows toward t -> 1; early expansion (t < 0.5) has lower separation loss
+            weight = 0.65 + 0.70 * (t0 ** 1.3)
+            fatigue_penalty_sum += (tan_seg ** 1.6) * weight
+            linear_penalty_sum += (tan_lin ** 1.6) * weight
+        if linear_penalty_sum > 1e-9:
+            bezier_ratio = max(0.68, min(1.35, fatigue_penalty_sum / linear_penalty_sum))
+            dp_expansion *= bezier_ratio
+
     total_dp = dp_friction + dp_expansion
     return (dp_friction, dp_expansion, total_dp, v_in, v_out, reynolds, dh_mean)
 
@@ -159,7 +183,17 @@ def solve_duct_physics(spec: DuctSpec, conditions: PhysicsConditions) -> Physics
     fillet_ratio = min(1.0, spec.corner_radius / max_possible_r)
     fillet_uniformity_bonus = 0.03 * fillet_ratio
 
-    raw_uniformity = 1.0 - (0.018 * side_angle_deg * (1.0 - 0.25 * spec.guide_vanes)) + fillet_uniformity_bonus
+    effective_angle_deg = side_angle_deg
+    if spec.width_profile_ctrl or spec.height_profile_ctrl:
+        # Evaluate exit divergence angle over the final 25% of the duct where separation dictates exit uniformity
+        w_75 = evaluate_bezier_scalar(spec.inlet_width, spec.width_profile_ctrl, spec.outlet_width, 0.75) / 1000.0
+        h_75 = evaluate_bezier_scalar(spec.inlet_height, spec.height_profile_ctrl, spec.outlet_height, 0.75) / 1000.0
+        exit_dw = abs(spec.outlet_width / 1000.0 - w_75)
+        exit_dh = abs(spec.outlet_height / 1000.0 - h_75)
+        exit_angle_deg = math.degrees(math.atan(max(exit_dw, exit_dh) / (2.0 * 0.25 * length_m)))
+        effective_angle_deg = 0.5 * side_angle_deg + 0.5 * exit_angle_deg
+
+    raw_uniformity = 1.0 - (0.018 * effective_angle_deg * (1.0 - 0.25 * spec.guide_vanes)) + fillet_uniformity_bonus
     uniformity = max(0.35, min(0.99, raw_uniformity))
 
     # Thermal heat removal: Q = m_dot * Cp * delta_T
