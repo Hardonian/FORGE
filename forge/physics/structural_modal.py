@@ -122,3 +122,4 @@ def analyze_structural_modal_resonance(
         flange_thermal_stress_mpa=round(flange_stress_mpa, 2),
         recommended_wall_mm=rec_wall_mm,
     )
+

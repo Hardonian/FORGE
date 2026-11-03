@@ -87,14 +87,14 @@ def simulate_transient_thermal_response(
         pwm_arr.append(round(pwm_pct, 1))
         cfm_arr.append(round(cur_cfm, 2))
 
-        # PID controller updating fan PWM command based on die temperature error + feedforward on TDP step
-        err = cur_temp_c - target_temp_c
-        integral_err = max(-20.0, min(50.0, integral_err + err * dt_s))
-        deriv_err = (err - prev_err) / max(1e-3, dt_s)
+        # BMC/IPMI closed-loop PID + TDP feedforward fan controller
+        err = max(0.0, cur_temp_c - (target_temp_c - 18.0))
+        integral_err = max(0.0, min(50.0, integral_err + err * dt_s))
+        deriv_err = max(0.0, (err - prev_err) / max(1e-3, dt_s))
         prev_err = err
 
-        ff_pwm = 25.0 + 60.0 * ((q_load - idle_watts) / max(10.0, burst_watts - idle_watts))
-        pid_out = ff_pwm + 3.2 * err + 0.45 * integral_err + 0.5 * deriv_err
+        ff_pwm = 25.0 + 55.0 * (max(0.0, q_load - idle_watts) / max(10.0, burst_watts - idle_watts))
+        pid_out = ff_pwm + 2.5 * err + 0.35 * integral_err + 0.5 * deriv_err
         pwm_pct = max(20.0, min(100.0, pid_out))
 
         cmd_cfm = max_eq_cfm * (pwm_pct / 100.0)

@@ -158,3 +158,4 @@ def export_openscad_script(spec: DuctSpec) -> str:
         "}\n\n"
         "forge_duct();\n"
     )
+
