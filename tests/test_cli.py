@@ -24,17 +24,23 @@ class CliTests(unittest.TestCase):
             self.assertTrue((out / "duct.stl").exists())
             self.assertTrue((out / "report.json").exists())
 
-    def test_generate_3mf_command(self):
+    def test_generate_3mf_and_glb_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
-            out = Path(tmp) / "candidate_3mf"
-            res = self.runner.invoke(app, ["generate", str(self.spec_json), "--out", str(out), "--format", "3mf"])
+            out_3mf = Path(tmp) / "candidate_3mf"
+            res = self.runner.invoke(app, ["generate", str(self.spec_json), "--out", str(out_3mf), "--format", "3mf"])
             self.assertEqual(res.exit_code, 0)
-            self.assertTrue((out / "duct.3mf").exists())
+            self.assertTrue((out_3mf / "duct.3mf").exists())
+
+            out_glb = Path(tmp) / "candidate_glb"
+            res_glb = self.runner.invoke(app, ["generate", str(self.spec_json), "--out", str(out_glb), "--format", "glb"])
+            self.assertEqual(res_glb.exit_code, 0)
+            self.assertTrue((out_glb / "duct.glb").exists())
 
     def test_simulate_command(self):
         res = self.runner.invoke(app, ["simulate", str(self.spec_json), "--cfm", "120"])
         self.assertEqual(res.exit_code, 0)
         self.assertIn("Total Pressure Drop", res.output)
+        self.assertIn("Aeroacoustic Noise", res.output)
 
     def test_dfm_command(self):
         res = self.runner.invoke(app, ["dfm", str(self.spec_json)])
@@ -47,6 +53,7 @@ class CliTests(unittest.TestCase):
             res = self.runner.invoke(app, ["openfoam", str(self.spec_json), "--out", str(out)])
             self.assertEqual(res.exit_code, 0)
             self.assertTrue((out / "system" / "controlDict").exists())
+            self.assertTrue((out / "system" / "snappyHexMeshDict").exists())
 
     def test_su2_command(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -58,4 +65,3 @@ class CliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

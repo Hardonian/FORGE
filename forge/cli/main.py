@@ -11,7 +11,15 @@ from forge.core.models import DuctSpec, PhysicsConditions
 from forge.core.hashes import sha256_hash
 from forge.cad.mesh import build_duct_mesh
 from forge.cad.dfm import analyze_dfm
-from forge.cad.exporters import export_ascii_stl, export_binary_stl, export_3mf, export_obj, export_step
+from forge.cad.exporters import (
+    export_ascii_stl,
+    export_binary_stl,
+    export_3mf,
+    export_obj,
+    export_step,
+    export_gltf,
+    export_glb,
+)
 from forge.physics.solver_1d import solve_duct_physics
 from forge.physics.openfoam import generate_openfoam_case
 from forge.physics.su2 import generate_su2_config
@@ -19,6 +27,7 @@ from forge.opt.search_space import DuctSearchSpace
 from forge.opt.optimizer import run_nsga2_optimization
 from forge.opt.report import generate_html_report
 from forge.lab.ingestion import compare_bench_to_simulation, ingest_telemetry_file
+from forge.lab.calibration import calibrate_sim2real_model
 
 app = typer.Typer(
     name="forge",
@@ -41,7 +50,7 @@ def version_callback(
 def generate(
     spec_path: Path = typer.Argument(..., help="Path to JSON specification file"),
     out: Path = typer.Option(..., "--out", "-o", help="Output directory"),
-    format: str = typer.Option("stl", "--format", "-f", help="Export format: stl, bin_stl, 3mf, obj, step"),
+    format: str = typer.Option("stl", "--format", "-f", help="Export format: stl, bin_stl, 3mf, obj, step, gltf, glb"),
 ):
     """Generate 3D watertight cooling duct mesh and geometry report."""
     data = json.loads(spec_path.read_text(encoding="utf-8"))
@@ -61,10 +70,13 @@ def generate(
         (out / "duct.obj").write_text(export_obj(tris), encoding="utf-8")
     elif format == "step":
         (out / "duct.stp").write_text(export_step(tris), encoding="utf-8")
+    elif format == "gltf":
+        (out / "duct.gltf").write_text(export_gltf(tris), encoding="utf-8")
+    elif format == "glb":
+        (out / "duct.glb").write_bytes(export_glb(tris))
     else:
         raise typer.BadParameter(f"Unsupported format: {format}")
 
-    # Geometry metrics
     inlet_area = (spec.inlet_width - 2 * spec.wall) * (spec.inlet_height - 2 * spec.wall)
     outlet_area = (spec.outlet_width - 2 * spec.wall) * (spec.outlet_height - 2 * spec.wall)
     report = {
@@ -88,13 +100,13 @@ def simulate(
     cfm: float = typer.Option(150.0, "--cfm", help="Volumetric airflow rate in CFM"),
     heat_watts: float = typer.Option(350.0, "--watts", help="Heat load to dissipate in Watts"),
 ):
-    """Run real-time aerodynamic and thermal physics simulation."""
+    """Run real-time aerodynamic, thermal, acoustic, and structural physics simulation."""
     data = json.loads(spec_path.read_text(encoding="utf-8"))
     spec = DuctSpec(**data)
     conds = PhysicsConditions(volumetric_flow_cfm=cfm, heat_dissipation_watts=heat_watts)
     res = solve_duct_physics(spec, conds)
 
-    table = Table(title=f"Aerodynamic & Thermal Performance ({cfm} CFM)")
+    table = Table(title=f"Aerodynamic, Thermal & Structural Performance ({cfm} CFM)")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green bold")
 
@@ -106,6 +118,9 @@ def simulate(
     table.add_row("Total Pressure Drop (dP)", f"{res.total_pressure_drop_pa:.2f} Pa")
     table.add_row("Velocity Uniformity (gamma)", f"{res.flow_uniformity_index:.3f} / 1.000")
     table.add_row("Estimated Air Temp Rise", f"{res.estimated_temp_rise_c:.2f} C")
+    table.add_row("Aeroacoustic Noise", f"{res.acoustic_noise_dba:.1f} dBA")
+    table.add_row("Max Wall Deflection", f"{res.max_wall_deflection_um:.3f} um")
+    table.add_row("Fan Operating Equilibrium", f"{res.fan_operating_cfm:.1f} CFM")
 
     console.print(table)
 
@@ -124,8 +139,9 @@ def dfm(
     console.print(f"[bold cyan]DFM Analysis[/bold cyan] (Material: [bold green]{report.material}[/bold green])")
     console.print(f"- Estimated Solid Mass: [yellow]{report.estimated_mass_grams} g[/yellow]")
     console.print(f"- Estimated Print Time: [yellow]{report.estimated_print_time_hours} hrs[/yellow]")
-    console.print(f"- Max Overhang Angle: [yellow]{report.max_overhang_angle_deg} deg[/yellow] (Compliant: {report.overhang_compliance})")
-    console.print(f"- Fits Build Bed: {'[green]YES[/green]' if report.bed_fit else '[red]NO[/red]'}")
+    console.print(f"- Min Normal Wall:      [yellow]{report.min_normal_wall_mm} mm[/yellow]")
+    console.print(f"- Max Overhang Angle:   [yellow]{report.max_overhang_angle_deg} deg[/yellow] (Compliant: {report.overhang_compliance})")
+    console.print(f"- Fits Build Bed:       {'[green]YES[/green]' if report.bed_fit else '[red]NO[/red]'}")
     if report.warnings:
         for w in report.warnings:
             console.print(f"  [bold red][!] Warning:[/bold red] {w}")
@@ -183,14 +199,16 @@ def lab(
     telemetry_path: Path = typer.Argument(..., help="Path to test bench telemetry JSON"),
     spec_path: Path = typer.Argument(..., help="Path to duct spec JSON"),
 ):
-    """Ingest test bench telemetry and compare against simulation."""
+    """Ingest test bench telemetry, compare against simulation, and calibrate Sim2Real model."""
     bench = ingest_telemetry_file(telemetry_path)
     spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
     res = compare_bench_to_simulation(spec, bench)
-    console.print("[bold cyan]Sim2Real Telemetry Comparison[/bold cyan]")
+    cal = calibrate_sim2real_model(spec, [bench])
+    console.print("[bold cyan]Sim2Real Telemetry Comparison & Calibration[/bold cyan]")
     console.print(f"- Simulated dP: [yellow]{res.sim_delta_p_pa} Pa[/yellow]")
     console.print(f"- Measured dP:  [green]{res.measured_delta_p_pa} Pa[/green]")
     console.print(f"- Discrepancy:  [bold]{res.delta_p_discrepancy_percent}%[/bold] ({res.status})")
+    console.print(f"- Calibrated Roughness: [cyan]{cal.calibrated_roughness_mm} mm[/cyan] (RMSE reduced {cal.baseline_rmse_pa} -> {cal.calibrated_rmse_pa} Pa)")
 
 
 @app.command()

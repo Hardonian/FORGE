@@ -7,7 +7,7 @@ from forge.physics.fluid_domain import extract_fluid_domain
 
 
 def generate_openfoam_case(spec: DuctSpec, conditions: PhysicsConditions, output_dir: Path) -> Path:
-    """Generate a production-ready OpenFOAM simpleFoam case directory."""
+    """Generate a complete, mesher-ready OpenFOAM simpleFoam case directory."""
     case_dir = Path(output_dir)
     sys_dir = case_dir / "system"
     zero_dir = case_dir / "0"
@@ -27,6 +27,20 @@ def generate_openfoam_case(spec: DuctSpec, conditions: PhysicsConditions, output
 
     (tri_dir / "duct_fluid.stl").write_text(export_ascii_stl(all_fluid_tris, solid_name="duct_fluid"), encoding="ascii")
 
+    # Bounding box for background hex mesh (with 10mm margin around geometry)
+    all_pts = [p for t in all_fluid_tris for p in (t.a, t.b, t.c)]
+    bx_min = min(p.x for p in all_pts) - 10.0
+    bx_max = max(p.x for p in all_pts) + 10.0
+    by_min = min(p.y for p in all_pts) - 10.0
+    by_max = max(p.y for p in all_pts) + 10.0
+    bz_min = min(p.z for p in all_pts) - 5.0
+    bz_max = max(p.z for p in all_pts) + 5.0
+
+    # Internal point guaranteed to be inside the fluid domain (midpoint along S-curve centerline)
+    mid_x = 0.5 * spec.offset_x
+    mid_y = 0.5 * spec.offset_y
+    mid_z = 0.5 * spec.length
+
     # 2. Flow velocity calculation
     q_m3_s = conditions.volumetric_flow_cfm * 0.000471947443
     in_area_m2 = max(1e-4, ((spec.inlet_width - 2 * spec.wall) * (spec.inlet_height - 2 * spec.wall)) / 1e6)
@@ -37,6 +51,154 @@ def generate_openfoam_case(spec: DuctSpec, conditions: PhysicsConditions, output
     k_inlet = 1.5 * (u_inlet * i_turb) ** 2
     l_turb = 0.07 * (min(spec.inlet_width, spec.inlet_height) / 1000.0)
     omega_inlet = (k_inlet ** 0.5) / (0.09 ** 0.25 * l_turb)
+
+    # system/blockMeshDict
+    (sys_dir / "blockMeshDict").write_text(f"""/*--------------------------------*- C++ -*----------------------------------*/
+FoamFile
+{{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      blockMeshDict;
+}}
+
+scale   0.001;
+
+vertices
+(
+    ({bx_min:.2f} {by_min:.2f} {bz_min:.2f})
+    ({bx_max:.2f} {by_min:.2f} {bz_min:.2f})
+    ({bx_max:.2f} {by_max:.2f} {bz_min:.2f})
+    ({bx_min:.2f} {by_max:.2f} {bz_min:.2f})
+    ({bx_min:.2f} {by_min:.2f} {bz_max:.2f})
+    ({bx_max:.2f} {by_min:.2f} {bz_max:.2f})
+    ({bx_max:.2f} {by_max:.2f} {bz_max:.2f})
+    ({bx_min:.2f} {by_max:.2f} {bz_max:.2f})
+);
+
+blocks
+(
+    hex (0 1 2 3 4 5 6 7) (24 24 32) simpleGrading (1 1 1)
+);
+
+edges
+(
+);
+
+boundary
+(
+    background
+    {{
+        type patch;
+        faces
+        (
+            (0 3 2 1)
+            (4 5 6 7)
+            (0 1 5 4)
+            (2 3 7 6)
+            (1 2 6 5)
+            (3 0 4 7)
+        );
+    }}
+);
+""", encoding="utf-8")
+
+    # system/snappyHexMeshDict
+    (sys_dir / "snappyHexMeshDict").write_text(f"""/*--------------------------------*- C++ -*----------------------------------*/
+FoamFile
+{{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      snappyHexMeshDict;
+}}
+
+castellatedMesh true;
+snap            true;
+addLayers       true;
+
+geometry
+{{
+    inlet.stl   {{ type triSurfaceMesh; name inlet; }}
+    outlet.stl  {{ type triSurfaceMesh; name outlet; }}
+    walls.stl   {{ type triSurfaceMesh; name walls; }}
+}};
+
+castellatedMeshControls
+{{
+    maxLocalCells       100000;
+    maxGlobalCells      500000;
+    minRefinementCells  10;
+    nCellsBetweenLevels 3;
+    features            ();
+    refinementSurfaces
+    {{
+        inlet  {{ level (1 1); patchInfo {{ type patch; }} }}
+        outlet {{ level (1 1); patchInfo {{ type patch; }} }}
+        walls  {{ level (2 2); patchInfo {{ type wall; }} }}
+    }}
+    resolveFeatureAngle 30;
+    refinementRegions   {{}}
+    locationInMesh      ({mid_x * 0.001:.5f} {mid_y * 0.001:.5f} {mid_z * 0.001:.5f});
+    allowFreeStandingZoneFaces true;
+}}
+
+snapControls
+{{
+    nSmoothPatch    3;
+    tolerance       2.0;
+    nSolveIter      30;
+    nRelaxIter      5;
+}}
+
+addLayersControls
+{{
+    relativeSizes       true;
+    layers
+    {{
+        walls
+        {{
+            nSurfaceLayers 3;
+        }}
+    }}
+    expansionRatio      1.2;
+    finalLayerThickness 0.3;
+    minThickness        0.1;
+    nGrow               0;
+    featureAngle        60;
+    nRelaxIter          3;
+    nSmoothSurfaceNormals 1;
+    nSmoothNormals      3;
+    nSmoothThickness    10;
+    maxFaceThicknessRatio 0.5;
+    maxThicknessToMedialRatio 0.3;
+    minMedialAxisAngle  90;
+    nBufferCellsNoExtrude 0;
+    nLayerIter          50;
+}}
+
+meshQualityControls
+{{
+    maxNonOrtho         65;
+    maxBoundarySkewness 20;
+    maxInternalSkewness 4;
+    maxConcave          80;
+    minVol              1e-13;
+    minTetQuality       1e-15;
+    minArea             -1;
+    minTwist            0.02;
+    minDeterminant      0.001;
+    minFaceWeight       0.05;
+    minVolRatio         0.01;
+    minTriangleTwist    -1;
+    nSmoothScale        4;
+    errorReduction      0.75;
+}}
+
+mergeTolerance 1e-6;
+""", encoding="utf-8")
 
     # system/controlDict
     (sys_dir / "controlDict").write_text("""/*--------------------------------*- C++ -*----------------------------------*\\
@@ -395,6 +557,15 @@ RAS
     turbulence      on;
     printCoeffs     on;
 }
+""", encoding="utf-8")
+
+    # Allrun executable script
+    (case_dir / "Allrun").write_text("""#!/bin/sh
+cd "${0%/*}" || exit 1
+blockMesh
+snappyHexMesh -overwrite
+checkMesh
+simpleFoam
 """, encoding="utf-8")
 
     return case_dir

@@ -1,10 +1,15 @@
-"""Unit tests for NSGA-II inverse optimization and reporting."""
+"""Unit tests for NSGA-II inverse optimization, crowding distance, and reporting."""
 import tempfile
 from pathlib import Path
 import unittest
 from forge.core.models import PhysicsConditions
 from forge.opt.search_space import DuctSearchSpace, sample_latin_hypercube
-from forge.opt.optimizer import run_nsga2_optimization
+from forge.opt.optimizer import (
+    run_nsga2_optimization,
+    evaluate_spec,
+    fast_non_dominated_sort,
+    compute_crowding_distances,
+)
 from forge.opt.report import generate_pareto_svg, generate_html_report
 
 
@@ -21,12 +26,19 @@ class OptimizationTests(unittest.TestCase):
         for s in samples:
             self.assertTrue(self.space.length_range.min_val <= s.length <= self.space.length_range.max_val)
 
-    def test_nsga2_pareto_optimizer(self):
+    def test_crowding_distance_and_nsga2_pareto_optimizer(self):
+        samples = sample_latin_hypercube(self.space, num_samples=8, seed=11)
+        evals = [evaluate_spec(s, self.conds) for s in samples]
+        fronts = fast_non_dominated_sort(evals)
+        dists = compute_crowding_distances(evals, fronts[0])
+        self.assertEqual(len(dists), len(fronts[0]))
+
         pareto = run_nsga2_optimization(
             self.space, self.conds, population_size=10, generations=2, seed=42
         )
         self.assertGreater(len(pareto), 0)
         for c in pareto:
+            self.assertEqual(c.pareto_rank, 0)
             self.assertGreater(c.physics.total_pressure_drop_pa, 0)
             self.assertGreater(c.mass_grams, 0)
 

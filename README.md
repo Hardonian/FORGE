@@ -14,36 +14,40 @@ FORGE bridges the loop between **computational geometry**, **automated computati
 ## Key Capabilities
 
 * **Parametric CAD & B-Rep Mesh Kernel (`forge.cad`):**
-  * Seamless transitions between rectangular, rounded-rectangle, and circular profiles (e.g. 120mm circular server fan to wide rectangular GPU heatsink).
-  * Smooth $S$-curve centerline interpolation ($dx, dy$ offsets to bypass PCIe slots, memory sticks, and power cables).
-  * Internal aerodynamic splitter guide vanes that divide diffusers and suppress boundary layer separation stall.
-  * Standard server fan mounting flanges (40mm, 60mm, 80mm, 92mm, 120mm, 140mm) with fastener holes and M3/M4 heat-set brass insert bosses.
-* **Multi-Format Industrial Export:**
-  * **Binary STL:** Fast, compact, IEEE-754 little-endian binary mesh.
+  * Phase-aligned, zero-twist transitions (`interpolate_morphed_ring`) between rectangular, rounded-rectangle, and circular profiles (e.g. 120mm circular server fan to wide rectangular GPU heatsink).
+  * True 3D normal wall thickness compensation ($\sec\theta$ adjustment) preventing thin sloped walls during steep transitions.
+  * Smooth $S$-curve Hermite centerline interpolation ($dx, dy$ offsets to bypass PCIe slots, memory sticks, and power cables).
+  * Watertight internal aerodynamic splitter guide vanes that divide diffusers and suppress boundary layer separation stall.
+  * Standard server fan mounting flanges (40mm, 60mm, 80mm, 92mm, 120mm, 140mm) with fastener holes and M3/M4 heat-set brass insert bosses, plus automated multi-part split-and-flange segmentation (`split_duct_for_printing`) for oversized ducts.
+* **Multi-Format Industrial & WebGL Export:**
+  * **Binary STL & ASCII STL:** Fast, compact IEEE-754 little-endian binary and ASCII meshes.
   * **3MF (3D Manufacturing Format):** Production archive with XML mesh data, millimeter units, and slicer metadata.
-  * **STEP (ISO-10303-21):** Faceted boundary representation for CAD assemblies (SolidWorks, FreeCAD, Onshape).
-  * **Wavefront OBJ & ASCII STL:** Universal 3D visualization formats.
+  * **STEP (ISO-10303-21):** Faceted `MANIFOLD_SOLID_BREP` with explicit `VERTEX_POINT` topology for CAD assemblies (SolidWorks, FreeCAD, Onshape).
+  * **glTF 2.0 & Binary GLB:** Khronos glTF 2.0 JSON and self-contained binary `.glb` containers for AR/VR and WebGL pipelines.
+  * **Wavefront OBJ:** Universal 3D visualization format with per-vertex area-weighted surface normals.
 * **Design For Manufacturing (DFM) & Material Safety:**
-  * Downward overhang angle analysis against print bed orientation ($>50^\circ$ warnings).
+  * Downward overhang angle analysis against print bed orientation ($>50^\circ$ warnings, excluding build-plate contact faces at $z = z_{\min}$).
+  * Normal 3D wall thickness verification (`min_normal_wall_mm`) against nozzle extrusion minimums.
   * Solid material mass and print time estimates based on engineering filament profiles (PC-CF, PA12-CF, PEEK, PETG, ABS).
-  * Datacenter thermal creep warnings for materials with Heat Deflection Temperatures below exhaust thresholds.
-  * Build volume collision checking against common 3D printers (Bambu Lab, Prusa, Voron).
-* **Physics & Automated CFD Generation (`forge.physics`):**
-  * Built-in 1D/2D analytical and empirical aerodynamic solver (Swamee-Jain / Colebrook-White friction + Idelchik diffuser loss coefficients).
-  * Automated **OpenFOAM** `simpleFoam` case generator with $k-\omega$ SST turbulence, prism boundary layers, and fan boundary conditions.
+  * Datacenter thermal creep warnings for materials with Heat Deflection Temperatures below exhaust thresholds, plus build volume collision checking (Bambu Lab, Prusa, Voron).
+* **Multi-Physics & Automated CFD Generation (`forge.physics`):**
+  * High-fidelity 1D/2D analytical and empirical solver: exact Ramanujan ellipse / rounded-rect hydraulic diameters, Swamee-Jain friction, Idelchik diffuser loss with corner fillet secondary-flow suppression, and S-curve Dean vortex loss.
+  * **Fan $P-Q$ Curve Operating Point Solver (`solve_fan_operating_point`):** Bisection solver intersecting non-linear server fan curves (`SanAce_40mm_1U`, `Delta_80mm_Server`, `Delta_120mm_HighSpeed`, `Noctua_140mm_Industrial`) with system impedance.
+  * **Aeroacoustics & Structural Mechanics:** Curle dipole aeroacoustic vortex-shedding noise (`acoustic_noise_dba`) and Roark flat-plate structural wall deflection (`max_wall_deflection_um`) under internal static pressure.
+  * Automated **OpenFOAM** `simpleFoam` case generator with $k-\omega$ SST turbulence, 3-layer prism boundary layer inflation (`addLayersControls`), and negative fluid domain extraction.
   * Automated **SU2** incompressible RANS configuration generator (`duct_cfd.cfg`).
 * **Multi-Objective Inverse Design (`forge.opt`):**
-  * Latin Hypercube Sampling (LHS) across bounded parameter search spaces.
-  * Genetic algorithm (NSGA-II) synthesizing Pareto-optimal designs balancing **minimum pressure drop ($\Delta P$)**, **maximum velocity uniformity ($\gamma$)**, and **minimum mass**.
+  * Latin Hypercube Sampling (LHS) across bounded parameter search spaces (`inlet`, `outlet`, `length`, `vanes`, `corner_radius`).
+  * Full NSGA-II genetic algorithm (`fast_non_dominated_sort`, `compute_crowding_distances`, crowded binary tournament selection) synthesizing Pareto-optimal designs balancing **minimum pressure drop ($\Delta P$)**, **maximum velocity uniformity ($\gamma$)**, and **minimum material-specific mass**.
   * Automated HTML engineering reports with embedded interactive SVG Pareto trade-off charts.
 * **Sim2Real Hardware Test Bench Calibration (`forge.lab`):**
   * Telemetry schema for physical wind tunnel / flow bench instrumentation (differential pressure transducers, anemometers, thermocouples).
-  * Automated discrepancy calculation ($\epsilon_{\Delta P}$) and Bayesian empirical roughness calibration.
-* **Deep Learning Neural Surrogates (`forge.surrogate`):**
-  * PyTorch neural operator predicting flow metrics in $<1$ ms.
-  * Active learning screening pipeline to evaluate $10,000+$ candidate designs prior to invoking CFD.
+  * Golden-section search (`calibrate_surface_roughness`) and joint 2D alternating coordinate descent (`calibrate_sim2real_model`) calibrating both empirical print roughness ($\varepsilon$) and minor loss multiplier ($K_{\text{mult}}$).
+* **Physics-Informed Neural Surrogates (`forge.surrogate`):**
+  * PyTorch Physics-Informed Residual Neural Operator (`DuctFlowSurrogate`) combining a differentiable analytical Darcy-Weisbach/Borda-Carnot prior with a learned MLP residual network (`train_on_specs`).
+  * Monte Carlo Dropout uncertainty quantification (`predict_with_uncertainty`) and Lower Confidence Bound (`LCB`) active learning acquisition (`rank_candidates_by_acquisition`) to screen $10,000+$ designs in milliseconds.
 * **Interactive 3D Web Studio & REST API (`forge.api`):**
-  * Built-in FastAPI server with endpoints for design generation, export, evaluation, and an interactive Three.js 3D WebGL studio.
+  * FastAPI server with endpoints for design evaluation (`/api/v1/evaluate`), live WebGL buffer streaming (`/api/v1/mesh`), asynchronous Pareto optimization (`/api/v1/optimize`), CAD export (`/api/v1/export/{stl,3mf,step,glb}`), and an interactive Three.js 3D Web Studio (`/viewer`) rendering exact parametric duct and vane meshes in real time.
 
 ---
 
