@@ -23,6 +23,17 @@ from .honeycomb import (
     generate_honeycomb_stator_mesh,
     evaluate_honeycomb_hydraulics,
 )
+from .obstacles import (
+    ObstacleClearanceReport,
+    ObstacleCollisionDetail,
+    check_obstacle_clearances,
+    route_duct_around_obstacles,
+)
+from .slicer import (
+    SLICER_MATERIAL_PROFILES,
+    export_production_slicer_3mf,
+    split_duct_with_interlocking_flanges,
+)
 
 __all__ = [
     "build_duct_mesh",
@@ -49,4 +60,11 @@ __all__ = [
     "HoneycombStatorSpec",
     "generate_honeycomb_stator_mesh",
     "evaluate_honeycomb_hydraulics",
+    "ObstacleClearanceReport",
+    "ObstacleCollisionDetail",
+    "check_obstacle_clearances",
+    "route_duct_around_obstacles",
+    "SLICER_MATERIAL_PROFILES",
+    "export_production_slicer_3mf",
+    "split_duct_with_interlocking_flanges",
 ]

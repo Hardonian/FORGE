@@ -24,6 +24,15 @@ from forge.opt.search_space import DuctSearchSpace
 from forge.opt.optimizer import run_nsga2_optimization
 from forge.opt.bezier_diffuser import optimize_bezier_diffuser
 from forge.presets.catalog import get_preset_spec, list_presets
+from forge.cad.obstacles import route_duct_around_obstacles
+from forge.cad.slicer import export_production_slicer_3mf
+from forge.copilot.agent import synthesize_from_prompt
+from forge.topopt.darcy_solver import run_fluid_topology_optimization
+from forge.surrogate.fno_field import predict_flow_field
+from forge.cloud.tenant import CloudEntitlementManager
+from forge.cloud.rack_twin import IPMITelemetryFrame, evaluate_datacenter_rack_roi
+
+_ENTITLEMENT_MANAGER = CloudEntitlementManager()
 
 app = FastAPI(
     title="FORGE Inverse-Design Platform API",
@@ -194,6 +203,89 @@ def acoustic_liner_endpoint(
         max_cavity_depth_mm=max_cavity_depth_mm,
     )
     return design.model_dump()
+
+
+@app.post("/api/v1/copilot")
+def copilot_endpoint(prompt: str, optimize_profile: bool = True):
+    """Natural language prompt-to-CAD inverse design synthesizer."""
+    res = synthesize_from_prompt(prompt, optimize_profile=optimize_profile)
+    return res.model_dump(mode="json")
+
+
+@app.post("/api/v1/obstacles/route")
+def route_obstacles_endpoint(spec: DuctSpec):
+    """Evaluate 3D obstacle clearances and automatically synthesize Bezier bypass control points."""
+    routed_spec, report = route_duct_around_obstacles(spec)
+    return {
+        "routed_spec": routed_spec.model_dump(mode="json"),
+        "clearance_report": report.model_dump(),
+    }
+
+
+@app.post("/api/v1/topopt")
+def topopt_endpoint(
+    spec: DuctSpec,
+    conditions: Optional[PhysicsConditions] = None,
+    nz: int = 20,
+    nx: int = 14,
+    iterations: int = 15,
+):
+    """Run Navier-Stokes Brinkman-Darcy fluid topology optimization and extract organic 3D-printable geometry."""
+    result, tris = run_fluid_topology_optimization(
+        spec, conditions=conditions, nz=nz, nx=nx, iterations=iterations
+    )
+    return {
+        "topopt_result": result.model_dump(mode="json"),
+        "triangle_count": len(tris),
+    }
+
+
+@app.post("/api/v1/flow-field")
+def flow_field_endpoint(
+    spec: DuctSpec,
+    conditions: Optional[PhysicsConditions] = None,
+    nz: int = 20,
+    nx: int = 16,
+):
+    """Predict full 2D/3D spatial velocity, static pressure, and separation risk fields via FNO surrogate."""
+    pred = predict_flow_field(spec, conditions=conditions, nz=nz, nx=nx)
+    return pred.model_dump()
+
+
+@app.post("/api/v1/enterprise/rack-roi")
+def enterprise_rack_roi_endpoint(
+    spec: DuctSpec,
+    ipmi: Optional[IPMITelemetryFrame] = None,
+    conditions: Optional[PhysicsConditions] = None,
+):
+    """Evaluate enterprise datacenter rack fan power savings, hotspot reduction, and financial payback."""
+    rep = evaluate_datacenter_rack_roi(spec, ipmi=ipmi, conditions=conditions)
+    return rep.model_dump()
+
+
+@app.get("/api/v1/cloud/billing/{tenant_id}")
+def cloud_billing_endpoint(tenant_id: str):
+    """Return multi-tenant SaaS subscription quota, compute credits, and billing summary."""
+    return _ENTITLEMENT_MANAGER.get_billing_summary(tenant_id)
+
+
+@app.post("/api/v1/export/slicer-3mf")
+def download_slicer_3mf(
+    spec: DuctSpec,
+    printer_profile: str = "Bambu_Lab_X1C",
+    auto_split_if_oversized: bool = True,
+):
+    """Generate and download production-ready Bambu/Prusa 3MF package with embedded filament & modifier settings."""
+    content = export_production_slicer_3mf(
+        spec,
+        printer_profile=printer_profile,
+        auto_split_if_oversized=auto_split_if_oversized,
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.ms-package.3dmanufacturing-3dmodel+xml",
+        headers={"Content-Disposition": "attachment; filename=forge_production_slicer.3mf"},
+    )
 
 
 @app.post("/api/v1/export/stl")
