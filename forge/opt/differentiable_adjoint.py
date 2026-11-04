@@ -78,7 +78,7 @@ def run_differentiable_adjoint_codesign(
             -0.35,  # logit for w1 in [0.20, 0.78]
             -0.10,  # logit for w2 in [0.45, 0.96]
             -0.80,  # logit for corner_radius in [spec.corner_radius, max_corner]
-            0.0,    # logit for fin_count in [init_fins, init_fins + 28]
+            0.0,  # logit for fin_count in [init_fins, init_fins + 28]
         ],
         dtype=torch.float64,
         requires_grad=True,
@@ -125,11 +125,7 @@ def run_differentiable_adjoint_codesign(
 
         # Exact cubic Bezier profile evaluation matching evaluate_bezier_scalar
         one_minus_t = 1.0 - t_grid
-        f_t = (
-            3.0 * (one_minus_t**2) * t_grid * w1
-            + 3.0 * one_minus_t * (t_grid**2) * w2
-            + (t_grid**3)
-        )
+        f_t = 3.0 * (one_minus_t**2) * t_grid * w1 + 3.0 * one_minus_t * (t_grid**2) * w2 + (t_grid**3)
         w_t = w_in + f_t * (w_out - w_in)
         h_t = h_in + f_t * (h_out - h_in)
 
@@ -158,9 +154,7 @@ def run_differentiable_adjoint_codesign(
         dh_mean = 0.5 * ((4.0 * a_in / p_in) + (4.0 * a_out / p_out))
         reynolds = (rho * v_mean * dh_mean) / mu
         roughness = max(1e-7, cond.surface_roughness_mm * 1e-3)
-        f_fric = 0.25 / (
-            torch.log10(roughness / (3.7 * dh_mean) + 5.74 / (reynolds**0.9)) ** 2
-        )
+        f_fric = 0.25 / (torch.log10(roughness / (3.7 * dh_mean) + 5.74 / (reynolds**0.9)) ** 2)
         dp_friction = f_fric * (length_m / dh_mean) * (0.5 * rho * (v_mean**2))
 
         max_possible_r = 0.5 * min_dim
@@ -172,9 +166,7 @@ def run_differentiable_adjoint_codesign(
         # Differentiable exit uniformity
         exit_slope = tan_seg[-3:].mean() / tan_lin
         uniformity_est = torch.clamp(
-            init_phys.flow_uniformity_index
-            + 0.06 * (1.0 - exit_slope)
-            + 0.04 * (r_corner_mm / max_possible_r),
+            init_phys.flow_uniformity_index + 0.06 * (1.0 - exit_slope) + 0.04 * (r_corner_mm / max_possible_r),
             min=0.55,
             max=0.98,
         )
@@ -242,12 +234,7 @@ def run_differentiable_adjoint_codesign(
         opt_w1 = round(float(0.20 + 0.58 * torch.sigmoid(theta[0]).item()), 4)
         opt_w2 = round(float(0.45 + 0.51 * torch.sigmoid(theta[1]).item()), 4)
         opt_corner = round(
-            float(
-                (
-                    spec.corner_radius
-                    + (max_corner - spec.corner_radius) * torch.sigmoid(theta[2])
-                ).item()
-            ),
+            float((spec.corner_radius + (max_corner - spec.corner_radius) * torch.sigmoid(theta[2])).item()),
             2,
         )
         opt_fins = int(round(float((init_fins + 26.0 * torch.sigmoid(theta[3])).item())))
