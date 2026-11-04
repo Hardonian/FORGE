@@ -14,7 +14,6 @@ Executes all 6 architectural pillars in under 15 seconds:
 
 from __future__ import annotations
 
-import io
 import json
 from pathlib import Path
 import sys

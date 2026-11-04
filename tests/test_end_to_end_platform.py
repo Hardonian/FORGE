@@ -349,15 +349,16 @@ def test_open_interoperability_openusd_modelica_mcp_and_schemas(tmp_path: Path):
 
     # 3. Model Context Protocol (MCP) JSON-RPC 2.0 & OpenAI Function Schemas
     tools = list_mcp_tools()
-    assert len(tools) >= 5
+    assert len(tools) >= 12
     openai_tools = get_openai_tool_schemas()
+    assert len(openai_tools) >= 12
     assert openai_tools[0]["type"] == "function"
 
     init_resp = handle_mcp_jsonrpc_request({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
     assert init_resp["result"]["serverInfo"]["name"] == "forge-mcp-server"
 
     list_resp = handle_mcp_jsonrpc_request({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-    assert len(list_resp["result"]["tools"]) >= 5
+    assert len(list_resp["result"]["tools"]) >= 12
 
     res_read = handle_mcp_jsonrpc_request(
         {"jsonrpc": "2.0", "id": 3, "method": "resources/read", "params": {"uri": "forge://presets/catalog"}}
@@ -378,6 +379,20 @@ def test_open_interoperability_openusd_modelica_mcp_and_schemas(tmp_path: Path):
     assert call_resp["result"]["isError"] is False
     parsed_call = json.loads(call_resp["result"]["content"][0]["text"])
     assert parsed_call["physics"]["total_pressure_drop_pa"] > 0.0
+
+    call_tpms = handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "forge_tpms_lattice",
+                "arguments": {"spec": {"lattice_type": "gyroid", "width_mm": 50, "height_mm": 30, "length_mm": 20}},
+            },
+        }
+    )
+    assert call_tpms["result"]["isError"] is False
+    assert json.loads(call_tpms["result"]["content"][0]["text"])["specific_surface_area_m2_m3"] > 50.0
 
     # 4. Open JSON-Schemas
     all_schemas = export_all_json_schemas()
@@ -528,6 +543,22 @@ def test_phase6_tpms_adjoint_calculix_fmu_and_provenance(tmp_path: Path):
     prov_out = tmp_path / "passport.json"
     assert runner.invoke(cli_app, ["provenance", str(spec_path), "--out", str(prov_out)]).exit_code == 0
     assert prov_out.exists()
+
+    # 7. TPMS WebGL Buffer endpoint & CLI Demo command
+    r_tpms_mesh = client.post("/api/v1/tpms/mesh", json={"spec": tpms_spec.model_dump()})
+    assert r_tpms_mesh.status_code == 200
+    assert len(r_tpms_mesh.json()["mesh"]["positions"]) > 100
+    assert r_tpms_mesh.json()["report"]["specific_surface_area_m2_m3"] > 100.0
+
+    demo_dir = tmp_path / "demo_run"
+    demo_res = runner.invoke(cli_app, ["demo", "--out", str(demo_dir)])
+    assert demo_res.exit_code == 0
+    assert (demo_dir / "forge_twin.usda").exists()
+    assert (demo_dir / "forge_component.mo").exists()
+    assert (demo_dir / "forge_fea.inp").exists()
+    assert (demo_dir / "forge_twin.fmu").exists()
+    assert (demo_dir / "passport.json").exists()
+    assert (demo_dir / "tpms_gyroid.stl").exists()
 
 
 
