@@ -448,6 +448,18 @@ def tpms_lattice_endpoint(spec: TPMSSpec, flow_cfm: float = 120.0):
     return rep.model_dump()
 
 
+@app.post("/api/v1/tpms/mesh")
+def tpms_webgl_mesh(spec: TPMSSpec, flow_cfm: float = 120.0):
+    """Return Three.js BufferGeometry float arrays and thermo-hydraulics for a TPMS metamaterial core."""
+    tris = build_tpms_lattice_mesh(spec, grid_nx=12, grid_ny=10, grid_nz=10)
+    buffers = mesh_to_WebGL_buffers(tris)
+    rep = evaluate_tpms_thermo_hydraulics(spec, flow_cfm=flow_cfm)
+    return {
+        "mesh": buffers,
+        "report": rep.model_dump(),
+    }
+
+
 @app.post("/api/v1/opt/adjoint")
 def differentiable_adjoint_endpoint(
     spec: DuctSpec,
@@ -566,6 +578,10 @@ def interactive_3d_viewer():
       <button id="btn_bezier" class="secondary">Stratford Bezier</button>
       <button id="btn_topopt" class="secondary">Darcy TopOpt</button>
       <button id="btn_adjoint" class="secondary">PyTorch Adjoint</button>
+    </div>
+    <div class="btn-row">
+      <button id="btn_tpms" class="secondary">Gyroid TPMS Core</button>
+      <button id="btn_passport" class="secondary">SLSA Provenance</button>
     </div>
     <div class="btn-row">
       <button id="btn_wire">Wireframe</button>
@@ -758,6 +774,51 @@ def interactive_3d_viewer():
       const d = await r.json();
       document.getElementById('trace-box').innerText = 'PyTorch Adjoint: dP -' + d.pressure_drop_reduction_pct + '%, Hotspot -' + d.hotspot_reduction_c + ' C';
       await renderSpec(d.optimized_spec);
+    };
+
+    document.getElementById('btn_tpms').onclick = async () => {
+      document.getElementById('trace-box').innerText = 'Generating 3D Gyroid TPMS Metamaterial Core...';
+      const r = await fetch('/api/v1/tpms/mesh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spec: {
+            lattice_type: 'gyroid',
+            width_mm: currentSpec.outlet_width || 120,
+            height_mm: currentSpec.outlet_height || 60,
+            length_mm: 32.0,
+            unit_cell_mm: 8.0,
+            porosity_inlet: 0.74,
+            porosity_outlet: 0.64
+          },
+          flow_cfm: 120.0
+        })
+      });
+      const d = await r.json();
+      if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(d.mesh.positions), 3));
+      geom.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(d.mesh.normals), 3));
+      mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.28, metalness: 0.25, side: THREE.DoubleSide }));
+      scene.add(mesh);
+      document.getElementById('m_dp').innerText = d.report.pressure_drop_pa + ' Pa';
+      document.getElementById('m_uni').innerText = 'TPMS Core';
+      document.getElementById('m_re').innerText = d.report.reynolds_number.toLocaleString();
+      document.getElementById('m_mass').innerText = d.report.total_wetted_area_cm2 + ' cm²';
+      document.getElementById('m_tris').innerText = d.report.triangle_count;
+      document.getElementById('trace-box').innerText = 'TPMS Gyroid: Area ' + d.report.specific_surface_area_m2_m3 + ' m²/m³, Nu=' + d.report.nusselt_number + ', Heat Cap @40K=' + d.report.heat_dissipation_at_40k_delta_w + 'W';
+    };
+
+    document.getElementById('btn_passport').onclick = async () => {
+      document.getElementById('trace-box').innerText = 'Cryptographically Signing SLSA Provenance Passport...';
+      const r = await fetch('/api/v1/compliance/provenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentSpec)
+      });
+      const d = await r.json();
+      const p = d.passport;
+      document.getElementById('trace-box').innerText = p.passport_id + ' | HMAC: ' + (d.signature_verified ? 'VERIFIED ✓' : 'INVALID ✗') + ' | Cost: $' + p.total_estimated_unit_cost_usd + ' | Drying: ' + p.drying_and_process.drying_temp_c + 'C/' + p.drying_and_process.drying_duration_hours + 'h';
     };
 
     document.getElementById('btn_wire').onclick = () => {
