@@ -46,7 +46,11 @@ from forge.interop.openusd import export_openusd_stage
 from forge.interop.modelica import export_modelica_component
 from forge.interop.mcp_server import get_openai_tool_schemas, handle_mcp_jsonrpc_request
 from forge.interop.open_schemas import export_all_json_schemas
-from forge.cad.tpms import TPMSSpec, evaluate_tpms_thermo_hydraulics
+from forge.cad.tpms import (
+    TPMSSpec,
+    build_tpms_lattice_mesh,
+    evaluate_tpms_thermo_hydraulics,
+)
 from forge.opt.differentiable_adjoint import run_differentiable_adjoint_codesign
 from forge.interop.calculix_fea import export_calculix_inp
 from forge.interop.fmi_fmu import export_fmu_package

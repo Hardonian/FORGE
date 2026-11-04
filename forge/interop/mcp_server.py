@@ -5,10 +5,20 @@ from typing import Any, Dict, List
 from forge import __version__
 from forge.cad.dfm import analyze_dfm
 from forge.cad.mesh import build_duct_mesh
+from forge.cad.tpms import TPMSSpec, evaluate_tpms_thermo_hydraulics
+from forge.cloud.rack_twin import IPMITelemetryFrame, evaluate_datacenter_rack_roi
 from forge.compliance.dossier import generate_compliance_dossier
+from forge.compliance.provenance import (
+    generate_hardware_provenance_passport,
+    verify_hardware_provenance,
+)
 from forge.copilot.agent import synthesize_from_prompt
 from forge.core.models import DuctSpec, PhysicsConditions
+from forge.interop.calculix_fea import export_calculix_inp
+from forge.interop.fmi_fmu import export_fmu_package
 from forge.interop.open_schemas import export_all_json_schemas
+from forge.interop.openusd import export_openusd_stage
+from forge.opt.differentiable_adjoint import run_differentiable_adjoint_codesign
 from forge.physics.heatsink import HeatsinkSpec, solve_coupled_duct_heatsink_system
 from forge.physics.solver_1d import solve_duct_physics
 from forge.presets.catalog import list_presets
@@ -75,6 +85,87 @@ def list_mcp_tools() -> List[Dict[str, Any]]:
                 "properties": {
                     "spec": DuctSpec.model_json_schema(),
                     "fan_rpm": {"type": "integer", "default": 9000},
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_tpms_lattice",
+            "description": "Synthesize a 3D functionally graded TPMS (Gyroid, Schwarz-P, Diamond) metamaterial core and evaluate Darcy-Forchheimer hydraulics and Nusselt CHT.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": TPMSSpec.model_json_schema(),
+                    "flow_cfm": {"type": "number", "default": 120.0},
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_differentiable_adjoint",
+            "description": "Run PyTorch end-to-end differentiable adjoint co-design to simultaneously optimize duct loft, corner radius, and heatsink fins.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": DuctSpec.model_json_schema(),
+                    "steps": {"type": "integer", "default": 35},
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_provenance_passport",
+            "description": "Generate a cryptographic Hardware Bill of Materials (HBOM) and SLSA digital manufacturing provenance passport with HMAC-SHA256 signature.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": DuctSpec.model_json_schema(),
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_rack_twin_roi",
+            "description": "Evaluate 42U datacenter rack digital twin fan affinity power reduction, GPU hotspot relief, and annual financial payback.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": DuctSpec.model_json_schema(),
+                    "fans_rpm": {"type": "number", "default": 11500.0},
+                    "gpu_temp_c": {"type": "number", "default": 78.5},
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_export_openusd",
+            "description": "Export Pixar / AOUSD OpenUSD (.usda) stage for NVIDIA Omniverse, Isaac Sim, and Blender with embedded physics digital twin attributes.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": DuctSpec.model_json_schema(),
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_export_calculix_inp",
+            "description": "Export CalculiX / Abaqus (.inp) finite element analysis deck with clamped inlet flange nodes, pressure DLOAD, and pre-stressed frequency extraction.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": DuctSpec.model_json_schema(),
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_export_fmu",
+            "description": "Export FMI 2.0 Co-Simulation and Model Exchange (.fmu) digital twin package with self-contained ANSI C99 kernel and XML description.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": DuctSpec.model_json_schema(),
                 },
                 "required": ["spec"],
             },
@@ -204,6 +295,59 @@ def handle_mcp_jsonrpc_request(request: Dict[str, Any]) -> Dict[str, Any]:
                 spec = DuctSpec(**args["spec"])
                 dossier = generate_compliance_dossier(spec, fan_rpm=int(args.get("fan_rpm", 9000)))
                 out_obj = dossier.model_dump(mode="json")
+
+            elif tool_name == "forge_tpms_lattice":
+                tpms_spec = TPMSSpec(**args["spec"])
+                flow_cfm = float(args.get("flow_cfm", 120.0))
+                rep = evaluate_tpms_thermo_hydraulics(tpms_spec, flow_cfm=flow_cfm)
+                out_obj = rep.model_dump()
+
+            elif tool_name == "forge_differentiable_adjoint":
+                spec = DuctSpec(**args["spec"])
+                steps = int(args.get("steps", 35))
+                res = run_differentiable_adjoint_codesign(spec, steps=steps)
+                out_obj = res.model_dump(mode="json")
+
+            elif tool_name == "forge_provenance_passport":
+                spec = DuctSpec(**args["spec"])
+                passport = generate_hardware_provenance_passport(spec)
+                verified = verify_hardware_provenance(passport)
+                out_obj = {
+                    "passport": passport.model_dump(mode="json"),
+                    "signature_verified": verified,
+                }
+
+            elif tool_name == "forge_rack_twin_roi":
+                spec = DuctSpec(**args["spec"])
+                ipmi = IPMITelemetryFrame(
+                    fans_rpm=float(args.get("fans_rpm", 11500.0)),
+                    gpu_hotspot_temp_c=float(args.get("gpu_temp_c", 78.5)),
+                )
+                roi = evaluate_datacenter_rack_roi(spec, ipmi=ipmi)
+                out_obj = roi.model_dump()
+
+            elif tool_name == "forge_export_openusd":
+                spec = DuctSpec(**args["spec"])
+                usda = export_openusd_stage(spec)
+                out_obj = {"stage_usda": usda}
+
+            elif tool_name == "forge_export_calculix_inp":
+                spec = DuctSpec(**args["spec"])
+                import tempfile
+                from pathlib import Path
+                with tempfile.TemporaryDirectory() as tmp:
+                    inp_p = export_calculix_inp(spec, Path(tmp) / "deck.inp")
+                    deck = inp_p.read_text(encoding="utf-8")
+                out_obj = {"calculix_deck_inp": deck}
+
+            elif tool_name == "forge_export_fmu":
+                spec = DuctSpec(**args["spec"])
+                import tempfile
+                from pathlib import Path
+                with tempfile.TemporaryDirectory() as tmp:
+                    fmu_p = export_fmu_package(spec, Path(tmp) / "model.fmu")
+                    fmu_size = fmu_p.stat().st_size
+                out_obj = {"fmu_filename": "model.fmu", "size_bytes": fmu_size, "status": "packaged"}
 
             else:
                 raise ValueError(f"Unknown MCP tool: '{tool_name}'")
