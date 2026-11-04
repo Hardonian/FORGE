@@ -180,6 +180,54 @@ python -m forge serve --port 8000
 
 *Navigate to `http://127.0.0.1:8000/viewer` to view and interact with ducts in real-time 3D WebGL.*
 
+### 8. End-to-End Multi-Disciplinary Showcase
+
+```bash
+python -m forge demo --out runs/demo
+```
+
+*Executes the complete generative pipeline across all 6 architectural pillars in ~3 seconds, compiling OpenUSD stages, Modelica components, CalculiX FEA decks, FMI 2.0 FMU containers, TPMS Gyroid cores, and cryptographic SLSA provenance passports.*
+
+### 9. TPMS Metamaterial Lattice Cores
+
+```bash
+python -m forge tpms --type gyroid --cell 8.0 --porosity-in 0.74 --out runs/tpms.stl
+```
+
+*Synthesizes functionally graded Gyroid, Schwarz-P, or Diamond 3D lattices and evaluates Darcy-Forchheimer hydraulics and Nusselt convective heat transfer.*
+
+### 10. PyTorch Differentiable Adjoint Co-Design
+
+```bash
+python -m forge adjoint examples/h100_datacenter_duct.json --steps 30
+```
+
+*Simultaneously optimizes duct loft, corner fillet radius, and heatsink fin count using exact `torch.autograd` analytical sensitivities.*
+
+### 11. Cryptographic SLSA Hardware Provenance Passport
+
+```bash
+python -m forge provenance examples/h100_datacenter_duct.json --out passport.json
+```
+
+*Generates a tamper-evident HMAC-SHA256 digital manufacturing passport binding the canonical spec, binary STL mesh, compliance dossier, and complete mechanical/additive BOM.*
+
+### 12. Universal Open Standards Export
+
+```bash
+# Export Pixar OpenUSD (.usda) scene
+python -m forge interop --target openusd --spec examples/h100_datacenter_duct.json --out forge_twin.usda
+
+# Export Modelica (.mo) 1D thermo-fluid component
+python -m forge interop --target modelica --spec examples/h100_datacenter_duct.json --out forge_component.mo
+
+# Export CalculiX / Abaqus (.inp) 3D FEA deck
+python -m forge interop --target calculix --spec examples/h100_datacenter_duct.json --out forge_fea.inp
+
+# Export FMI 2.0 Co-Simulation (.fmu) digital twin archive
+python -m forge interop --target fmu --spec examples/h100_datacenter_duct.json --out forge_twin.fmu
+```
+
 ---
 
 ## Legacy Backward Compatibility
