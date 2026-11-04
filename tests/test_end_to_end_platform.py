@@ -31,6 +31,22 @@ from forge.compliance.dossier import (
     export_compliance_dossier_markdown,
     generate_compliance_dossier,
 )
+from forge.interop.openusd import export_openusd_stage
+from forge.interop.modelica import export_modelica_component
+from forge.interop.mcp_server import (
+    get_openai_tool_schemas,
+    handle_mcp_jsonrpc_request,
+    list_mcp_tools,
+)
+from forge.interop.open_schemas import export_all_json_schemas
+from forge.cad.tpms import TPMSSpec, build_tpms_lattice_mesh, evaluate_tpms_thermo_hydraulics
+from forge.opt.differentiable_adjoint import run_differentiable_adjoint_codesign
+from forge.interop.calculix_fea import export_calculix_inp
+from forge.interop.fmi_fmu import export_fmu_package
+from forge.compliance.provenance import (
+    generate_hardware_provenance_passport,
+    verify_hardware_provenance,
+)
 
 
 def test_obstacle_clearance_and_auto_routing():
@@ -304,5 +320,215 @@ def test_cad_plugins_modal_transient_and_compliance_dossier(tmp_path: Path):
     fs_file = tmp_path / "duct.fs"
     assert runner.invoke(cli_app, ["cad-script", str(spec_file), "--target", "onshape", "--out", str(fs_file)]).exit_code == 0
     assert fs_file.exists()
+
+
+def test_open_interoperability_openusd_modelica_mcp_and_schemas(tmp_path: Path):
+    """Verify OpenUSD (.usda), Modelica (.mo), MCP JSON-RPC 2.0 server, OpenAI tool schemas, and JSON Schemas."""
+    spec = DuctSpec(
+        inlet_width=80.0,
+        inlet_height=80.0,
+        outlet_width=112.0,
+        outlet_height=42.0,
+        length=90.0,
+        wall=2.0,
+        material=DuctMaterial.PC_CF,
+    )
+
+    # 1. NVIDIA Omniverse / Pixar OpenUSD (.usda) stage
+    usda = export_openusd_stage(spec)
+    assert "#usda 1.0" in usda
+    assert 'def Xform "FORGE_DigitalTwin"' in usda
+    assert "forge:physics:totalPressureDropPa" in usda
+    assert 'uniform token info:id = "UsdPreviewSurface"' in usda
+
+    # 2. Modelica (.mo) 1D Thermo-Fluid Digital Twin
+    mo = export_modelica_component(spec)
+    assert "within FORGE.ThermalFluid;" in mo
+    assert "K_turbulent" in mo
+    assert "delta_p_Pa = p_in_Pa - p_out_Pa;" in mo
+
+    # 3. Model Context Protocol (MCP) JSON-RPC 2.0 & OpenAI Function Schemas
+    tools = list_mcp_tools()
+    assert len(tools) >= 5
+    openai_tools = get_openai_tool_schemas()
+    assert openai_tools[0]["type"] == "function"
+
+    init_resp = handle_mcp_jsonrpc_request({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+    assert init_resp["result"]["serverInfo"]["name"] == "forge-mcp-server"
+
+    list_resp = handle_mcp_jsonrpc_request({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+    assert len(list_resp["result"]["tools"]) >= 5
+
+    res_read = handle_mcp_jsonrpc_request(
+        {"jsonrpc": "2.0", "id": 3, "method": "resources/read", "params": {"uri": "forge://presets/catalog"}}
+    )
+    assert "H100_PCIe_1U_SanAce40" in res_read["result"]["contents"][0]["text"]
+
+    call_resp = handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "forge_evaluate_duct",
+                "arguments": {"spec": spec.model_dump(mode="json"), "volumetric_flow_cfm": 120.0},
+            },
+        }
+    )
+    assert call_resp["result"]["isError"] is False
+    parsed_call = json.loads(call_resp["result"]["content"][0]["text"])
+    assert parsed_call["physics"]["total_pressure_drop_pa"] > 0.0
+
+    # 4. Open JSON-Schemas
+    all_schemas = export_all_json_schemas()
+    assert "DuctSpec" in all_schemas["schemas"]
+    assert "ComplianceDossier" in all_schemas["schemas"]
+
+    # 5. REST API & CLI Verification
+    client = TestClient(fastapi_app)
+    spec_json = spec.model_dump(mode="json")
+
+    r_usda = client.post("/api/v1/export/openusd", json={"spec": spec_json})
+    assert r_usda.status_code == 200
+    assert "#usda 1.0" in r_usda.text
+
+    r_mo = client.post("/api/v1/export/modelica", json={"spec": spec_json})
+    assert r_mo.status_code == 200
+    assert "within FORGE.ThermalFluid;" in r_mo.text
+
+    r_mcp = client.post("/api/v1/mcp", json={"jsonrpc": "2.0", "id": 10, "method": "tools/list"})
+    assert r_mcp.status_code == 200
+    assert len(r_mcp.json()["result"]["tools"]) >= 5
+
+    r_tools = client.get("/api/v1/tools/schema")
+    assert r_tools.status_code == 200
+    assert len(r_tools.json()["tools"]) >= 5
+
+    r_schemas = client.get("/api/v1/schemas")
+    assert r_schemas.status_code == 200
+    assert "DuctSpec" in r_schemas.json()["schemas"]
+
+    runner = CliRunner()
+    out_sch = tmp_path / "schemas.json"
+    assert runner.invoke(cli_app, ["interop", "--target", "schemas", "--out", str(out_sch)]).exit_code == 0
+    assert out_sch.exists()
+
+
+def test_phase6_tpms_adjoint_calculix_fmu_and_provenance(tmp_path: Path):
+    """Verify Phase 6: TPMS Gyroid/Diamond metamaterial lattices, PyTorch differentiable adjoint co-design,
+    CalculiX (.inp) FEA export, FMI 2.0 (.fmu) digital twin package, and Cryptographic HBOM Provenance Passport.
+    """
+    # 1. TPMS Gyroid & Diamond Metamaterial Lattice Core
+    tpms_spec = TPMSSpec(
+        lattice_type="gyroid",
+        width_mm=60.0,
+        height_mm=40.0,
+        length_mm=28.0,
+        unit_cell_mm=8.0,
+        porosity_inlet=0.74,
+        porosity_outlet=0.64,
+    )
+    tpms_tris = build_tpms_lattice_mesh(tpms_spec, grid_nx=10, grid_ny=8, grid_nz=8)
+    assert len(tpms_tris) > 50
+    tpms_rep = evaluate_tpms_thermo_hydraulics(tpms_spec, flow_cfm=130.0)
+    assert tpms_rep.specific_surface_area_m2_m3 > 100.0
+    assert tpms_rep.nusselt_number > 10.0
+    assert tpms_rep.heat_dissipation_at_40k_delta_w > 150.0
+    assert tpms_rep.self_supporting_printability is True
+
+    # 2. PyTorch End-to-End Differentiable Adjoint Co-Design
+    base_spec = DuctSpec(
+        inlet_width=80.0,
+        inlet_height=80.0,
+        outlet_width=136.0,
+        outlet_height=62.0,
+        length=95.0,
+        wall=2.0,
+        guide_vanes=0,
+        material=DuctMaterial.PC_CF,
+    )
+    adj_res = run_differentiable_adjoint_codesign(base_spec, steps=35)
+    assert len(adj_res.loss_trajectory) == 35
+    assert adj_res.loss_trajectory[-1] < adj_res.loss_trajectory[0]
+    assert "dLoss_dBezierW1" in adj_res.adjoint_sensitivities
+    assert adj_res.optimized_pressure_drop_pa < adj_res.initial_pressure_drop_pa
+    assert adj_res.optimized_hotspot_temp_c < adj_res.initial_hotspot_temp_c
+
+    # 3. CalculiX / Abaqus (.inp) 3D Structural & Modal FEA Deck
+    inp_file = tmp_path / "forge_duct.inp"
+    export_calculix_inp(base_spec, inp_file)
+    inp_text = inp_file.read_text(encoding="utf-8")
+    assert "*NODE, NSET=Nall" in inp_text
+    assert "*ELEMENT, TYPE=S3, ELSET=Eall" in inp_text
+    assert "*MATERIAL, NAME=PC_CF" in inp_text
+    assert "*FREQUENCY" in inp_text
+
+    # 4. FMI 2.0 Co-Simulation (.fmu) Digital Twin Package
+    fmu_file = tmp_path / "forge_duct.fmu"
+    export_fmu_package(base_spec, fmu_file)
+    assert fmu_file.exists()
+    with zipfile.ZipFile(fmu_file, "r") as zf:
+        names = set(zf.namelist())
+        assert "modelDescription.xml" in names
+        assert "sources/forge_duct_fmu.c" in names
+        assert "resources/forge_spec.json" in names
+        xml_text = zf.read("modelDescription.xml").decode("utf-8")
+        assert 'fmiVersion="2.0"' in xml_text
+        assert 'name="pressure_drop_pa"' in xml_text
+
+    # 5. Cryptographic Hardware Bill of Materials (HBOM) & SLSA Provenance Passport
+    passport = generate_hardware_provenance_passport(base_spec)
+    assert passport.passport_id.startswith("FRG-PASS-")
+    assert len(passport.bom_items) >= 2
+    assert passport.total_estimated_unit_cost_usd > 0.0
+    assert verify_hardware_provenance(passport) is True
+
+    # Tampering with unit cost must immediately invalidate the HMAC-SHA256 signature
+    tampered = passport.model_copy(
+        update={"total_estimated_unit_cost_usd": passport.total_estimated_unit_cost_usd + 100.0}
+    )
+    assert verify_hardware_provenance(tampered) is False
+
+    # 6. FastAPI & CLI End-to-End Verification
+    client = TestClient(fastapi_app)
+    spec_json = base_spec.model_dump(mode="json")
+
+    r_tpms = client.post("/api/v1/tpms", json=tpms_spec.model_dump())
+    assert r_tpms.status_code == 200
+    assert r_tpms.json()["self_supporting_printability"] is True
+
+    r_adj = client.post("/api/v1/opt/adjoint?steps=20", json={"spec": spec_json})
+    assert r_adj.status_code == 200
+    assert r_adj.json()["pressure_drop_reduction_pct"] > 0.0
+
+    r_inp = client.post("/api/v1/export/calculix", json={"spec": spec_json})
+    assert r_inp.status_code == 200
+    assert "*ELEMENT, TYPE=S3" in r_inp.text
+
+    r_fmu = client.post("/api/v1/export/fmu", json={"spec": spec_json})
+    assert r_fmu.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(r_fmu.content), "r") as zf_api:
+        assert "modelDescription.xml" in zf_api.namelist()
+
+    r_prov = client.post("/api/v1/compliance/provenance", json={"spec": spec_json})
+    assert r_prov.status_code == 200
+    assert r_prov.json()["signature_verified"] is True
+
+    runner = CliRunner()
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(spec_json), encoding="utf-8")
+    tpms_out = tmp_path / "tpms.stl"
+    assert runner.invoke(cli_app, ["tpms", "--type", "gyroid", "--out", str(tpms_out)]).exit_code == 0
+    assert tpms_out.exists()
+
+    adj_out = tmp_path / "adj.json"
+    assert runner.invoke(cli_app, ["adjoint", str(spec_path), "--steps", "15", "--out", str(adj_out)]).exit_code == 0
+    assert adj_out.exists()
+
+    prov_out = tmp_path / "passport.json"
+    assert runner.invoke(cli_app, ["provenance", str(spec_path), "--out", str(prov_out)]).exit_code == 0
+    assert prov_out.exists()
+
+
 
 

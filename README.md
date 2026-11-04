@@ -39,22 +39,35 @@ FORGE bridges the loop between **computational geometry**, **automated computati
   * **Swirl-Canceling Honeycomb Stators (`forge.cad.honeycomb`):** Parametric cellular flow-straightener mesh and Idelchik screen hydraulics (`evaluate_honeycomb_hydraulics`).
   * Automated **OpenFOAM** `simpleFoam` case generator with $k-\omega$ SST turbulence, 3-layer prism boundary layer inflation (`addLayersControls`), and negative fluid domain extraction.
   * Automated **SU2** incompressible RANS configuration generator (`duct_cfd.cfg`).
-* **Multi-Objective & Gradient Inverse Design (`forge.opt`):**
+* **Multi-Objective & Differentiable Adjoint Inverse Design (`forge.opt`):**
+  * **PyTorch End-to-End Differentiable Adjoint Co-Design (`run_differentiable_adjoint_codesign`):** Simultaneously co-optimizes the multi-station Bézier duct loft, corner fillet radius, and downstream heatsink fin density via exact `torch.autograd` analytical sensitivities ($\nabla_\theta \mathcal{L}$).
   * **Stratford / Bell-Mouth Multi-Station Bézier Diffuser Optimizer (`optimize_bezier_diffuser`):** Gradient-based non-linear expansion profile synthesis that expands rapidly while boundary-layer kinetic energy is high and gently decelerates near the exit to suppress separation.
   * Latin Hypercube Sampling (LHS) across bounded parameter search spaces (`inlet`, `outlet`, `length`, `vanes`, `corner_radius`).
   * Full NSGA-II genetic algorithm (`fast_non_dominated_sort`, `compute_crowding_distances`, crowded binary tournament selection) synthesizing Pareto-optimal designs balancing **minimum pressure drop ($\Delta P$)**, **maximum velocity uniformity ($\gamma$)**, and **minimum material-specific mass**.
   * Automated HTML engineering reports with embedded interactive SVG Pareto trade-off charts.
+* **TPMS Metamaterial Lattice Cores (`forge.cad.tpms`):**
+  * Functionally graded **Triply Periodic Minimal Surface (TPMS)** 3D mesh generator (`build_tpms_lattice_mesh`) for self-supporting **Gyroid**, **Schwarz-P**, and **Diamond** heat-exchanger and acoustic cores, coupled with Darcy-Forchheimer permeability and Nusselt convective heat transfer analysis (`evaluate_tpms_thermo_hydraulics`).
 * **Persistent SQLite Digital Twin Registry & Hardware Presets (`forge.registry`, `forge.presets`):**
   * Zero-dependency SQLite lineage store (`ForgeRegistry`) tracking SHA-256 canonical hashes, physics/DFM evaluations, Pareto queries, surrogate training datasets, and Sim2Real telemetry runs.
   * Built-in hardware accelerator presets (`H100_PCIe_1U_SanAce40`, `L40S_80mm_Server_Duct`, `RTX_4090_120mm_Blower_Conversion`, `MI300X_OAM_120mm_HighFlow`, `Quiet_Workstation_140mm_GPU`).
 * **Sim2Real Hardware Test Bench Calibration (`forge.lab`):**
   * Telemetry schema for physical wind tunnel / flow bench instrumentation (differential pressure transducers, anemometers, thermocouples).
   * Golden-section search (`calibrate_surface_roughness`) and joint 2D alternating coordinate descent (`calibrate_sim2real_model`) calibrating both empirical print roughness ($\varepsilon$) and minor loss multiplier ($K_{\text{mult}}$).
-* **Physics-Informed Neural Surrogates (`forge.surrogate`):**
-  * PyTorch Physics-Informed Residual Neural Operator (`DuctFlowSurrogate`) combining a differentiable analytical Darcy-Weisbach/Borda-Carnot prior with a learned MLP residual network (`train_on_specs`).
+* **Physics-Informed Neural Surrogates & Fluid TopOpt (`forge.surrogate`, `forge.topopt`):**
+  * PyTorch Physics-Informed Residual Neural Operator (`DuctFlowSurrogate`) and 2D/3D Fourier Neural Operator (`FNOFlowFieldSurrogate`) predicting full spatial velocity, pressure, and boundary-layer separation fields in milliseconds.
   * Monte Carlo Dropout uncertainty quantification (`predict_with_uncertainty`) and Lower Confidence Bound (`LCB`) active learning acquisition (`rank_candidates_by_acquisition`) to screen $10,000+$ designs in milliseconds.
-* **Interactive 3D Web Studio & REST API (`forge.api`):**
-  * FastAPI server with endpoints for design evaluation (`/api/v1/evaluate`), live WebGL buffer streaming (`/api/v1/mesh`), asynchronous Pareto optimization (`/api/v1/optimize`), CAD export (`/api/v1/export/{stl,3mf,step,glb}`), and an interactive Three.js 3D Web Studio (`/viewer`) rendering exact parametric duct and vane meshes in real time.
+  * Continuous Brinkman-Darcy Fluid Topology Optimization (`run_fluid_topology_optimization`) with RAMP penalization and Helmholtz spatial filtering to synthesize organic internal flow splitters.
+* **Universal Open Interoperability (`forge.interop`, `forge.cad.cad_plugins`):**
+  * **OpenUSD (`.usda`):** Full Pixar/AOUSD Universal Scene Description stage export (`export_openusd_stage`) for NVIDIA Omniverse, Isaac Sim, and Blender with PBR materials and embedded `forge:physics:*` / `forge:dfm:*` digital twin attributes.
+  * **Modelica (`.mo`) & FMI 2.0 Co-Simulation (`.fmu`):** Non-causal 1D system-level thermo-fluid component export (`export_modelica_component`) and standards-compliant FMI 2.0 Co-Simulation/Model Exchange ZIP archives (`export_fmu_package`) with ANSI C99 equations and `modelDescription.xml`.
+  * **CalculiX / Abaqus 3D FEA (`.inp`):** Ready-to-run 3D thermo-structural stress and pre-stressed modal eigenfrequency finite element decks (`export_calculix_inp`).
+  * **Model Context Protocol (MCP) & OpenAI Tool Schemas:** Native JSON-RPC 2.0 MCP server (`/api/v1/mcp`) and function-calling schemas (`/api/v1/tools/schema`) for autonomous AI engineering agents.
+  * **Native Parametric CAD Scripts:** Editable Onshape FeatureScript (`.fs`), FreeCAD Python macros (`.FCMacro`), and OpenSCAD scripts (`.scad`), plus production Bambu/Prusa/OrcaSlicer `.3mf` project archives (`export_production_slicer_3mf`).
+* **Enterprise Qualification, Cryptographic HBOM Provenance & Flagship 3D Web Studio 2.0 (`forge.compliance`, `forge.cloud`, `forge.api`):**
+  * Automated structural modal vibration & fan harmonic resonance (`analyze_structural_modal_resonance`), transient thermal + closed-loop PID fan ramp simulation (`simulate_transient_thermal_response`), and UL94 / ASHRAE TC 9.9 / NEBS GR-63-CORE / ISO 7779 compliance dossier generation (`generate_compliance_dossier`).
+  * **Cryptographic Hardware Bill of Materials (HBOM) & SLSA Provenance Passport (`generate_hardware_provenance_passport`):** Tamper-evident HMAC-SHA256 signed digital manufacturing passport binding canonical spec, binary STL, compliance dossier, fasteners/inserts BOM, and desiccant filament drying schedules.
+  * 42U 64-GPU datacenter rack digital twin & electricity/$\text{CO}_2$ ROI calculator (`evaluate_datacenter_rack_roi`).
+  * FastAPI server and Flagship Three.js 3D Web Studio 2.0 (`/viewer`) featuring AI Copilot prompt synthesis, hardware presets, Stratford Bézier, Darcy TopOpt & PyTorch Adjoint buttons, live vertex velocity heatmaps, and 1-click `.3mf`, `.glb`, `.usda`, `.inp`, and `.fmu` downloads.
 
 ---
 
@@ -63,13 +76,18 @@ FORGE bridges the loop between **computational geometry**, **automated computati
 ```text
 forge/
 ├── core/         # Geometric primitives (Vec3, Triangle), Pydantic v2 schemas, canonical hashing
-├── cad/          # Parametric lofting, server fan flanges, 3MF/STL/STEP exporters, DFM analysis
-├── physics/      # Aerodynamic solver (ΔP, uniformity, thermal rise), OpenFOAM & SU2 generators
-├── opt/          # Latin Hypercube sampling, NSGA-II Pareto optimizer, HTML reporting
-├── lab/          # Test bench telemetry ingestion, Sim2Real discrepancy, roughness calibration
-├── surrogate/    # PyTorch neural operator surrogate model and active learning screener
-├── cli/          # Typer command-line interface
-├── api/          # FastAPI web server and Three.js 3D Web Studio
+├── cad/          # Parametric lofting, obstacle routing, slicer 3MF, CAD scripts, STEP/GLB/STL, DFM
+├── physics/      # Aero/CHT solver, heatsink, structural modal, transient PID thermal, OpenFOAM/SU2
+├── opt/          # Stratford Bézier diffuser, LHS sampling, NSGA-II Pareto optimizer, HTML reports
+├── topopt/       # Brinkman-Darcy continuous fluid topology optimization & organic vane extraction
+├── copilot/      # Natural-language prompt-to-hardware synthesis & obstacle auto-routing agent
+├── interop/      # Universal OpenUSD (.usda), Modelica (.mo), MCP JSON-RPC 2.0, JSON Schemas
+├── compliance/   # Enterprise UL94, ASHRAE TC 9.9, NEBS GR-63-CORE, ISO 7779 qualification dossiers
+├── cloud/        # Multi-tenant SaaS entitlements and 42U datacenter rack IPMI digital twin ROI
+├── lab/          # Test bench telemetry ingestion, Sim2Real discrepancy, 2D roughness calibration
+├── surrogate/    # PyTorch residual MLP + 2D/3D Fourier Neural Operator (FNO) spatial flow fields
+├── cli/          # Typer command-line interface (21 subcommands)
+├── api/          # FastAPI server and Flagship Three.js 3D Web Studio 2.0
 └── duct.py       # Backward-compatible transition duct interface
 ```
 

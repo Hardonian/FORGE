@@ -42,6 +42,20 @@ from forge.compliance.dossier import (
     export_compliance_dossier_markdown,
     generate_compliance_dossier,
 )
+from forge.interop.openusd import export_openusd_stage
+from forge.interop.modelica import export_modelica_component
+from forge.interop.mcp_server import get_openai_tool_schemas, handle_mcp_jsonrpc_request
+from forge.interop.open_schemas import export_all_json_schemas
+from forge.cad.tpms import TPMSSpec, evaluate_tpms_thermo_hydraulics
+from forge.opt.differentiable_adjoint import run_differentiable_adjoint_codesign
+from forge.interop.calculix_fea import export_calculix_inp
+from forge.interop.fmi_fmu import export_fmu_package
+from forge.compliance.provenance import (
+    generate_hardware_provenance_passport,
+    verify_hardware_provenance,
+)
+import tempfile
+from pathlib import Path
 
 _ENTITLEMENT_MANAGER = CloudEntitlementManager()
 
@@ -391,55 +405,173 @@ def download_glb(spec: DuctSpec):
     return Response(content=content, media_type="model/gltf-binary", headers={"Content-Disposition": "attachment; filename=duct.glb"})
 
 
+@app.post("/api/v1/export/openusd")
+def download_openusd(spec: DuctSpec, conditions: Optional[PhysicsConditions] = None):
+    """Export NVIDIA Omniverse / Pixar OpenUSD (.usda) scene with embedded physics digital twin attributes."""
+    usda = export_openusd_stage(spec, conditions=conditions)
+    return Response(content=usda, media_type="text/plain", headers={"Content-Disposition": "attachment; filename=forge_twin.usda"})
+
+
+@app.post("/api/v1/export/modelica")
+def download_modelica(spec: DuctSpec, conditions: Optional[PhysicsConditions] = None):
+    """Export Modelica (.mo) 1D system-level thermo-fluid component."""
+    mo = export_modelica_component(spec, conditions=conditions)
+    return Response(content=mo, media_type="text/plain", headers={"Content-Disposition": "attachment; filename=FORGE_CoolingDuct.mo"})
+
+
+@app.post("/api/v1/mcp")
+def mcp_jsonrpc_endpoint(request: Dict):
+    """Model Context Protocol (MCP) JSON-RPC 2.0 server endpoint for AI agent tool discovery and invocation."""
+    return handle_mcp_jsonrpc_request(request)
+
+
+@app.get("/api/v1/tools/schema")
+def openai_tools_schema_endpoint():
+    """Return OpenAI / Anthropic / Gemini function-calling tool schemas for FORGE."""
+    return {"tools": get_openai_tool_schemas()}
+
+
+@app.get("/api/v1/schemas")
+def open_json_schemas_endpoint():
+    """Return Draft 2020-12 JSON Schemas for all FORGE domain models."""
+    return export_all_json_schemas()
+
+
+@app.post("/api/v1/tpms")
+def tpms_lattice_endpoint(spec: TPMSSpec, flow_cfm: float = 120.0):
+    """Evaluate TPMS (Gyroid, Schwarz-P, Diamond) metamaterial lattice thermo-hydraulics and printability."""
+    rep = evaluate_tpms_thermo_hydraulics(spec, flow_cfm=flow_cfm)
+    return rep.model_dump()
+
+
+@app.post("/api/v1/opt/adjoint")
+def differentiable_adjoint_endpoint(
+    spec: DuctSpec,
+    heatsink: Optional[HeatsinkSpec] = None,
+    conditions: Optional[PhysicsConditions] = None,
+    steps: int = 40,
+):
+    """Run PyTorch end-to-end differentiable adjoint co-design of duct loft and finned heatsink."""
+    res = run_differentiable_adjoint_codesign(
+        spec, heatsink=heatsink, conditions=conditions, steps=steps
+    )
+    return res.model_dump(mode="json")
+
+
+@app.post("/api/v1/export/calculix")
+def download_calculix_fea(spec: DuctSpec, conditions: Optional[PhysicsConditions] = None):
+    """Export CalculiX / Abaqus (.inp) 3D structural, thermal, and modal finite element analysis deck."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = export_calculix_inp(spec, Path(tmp) / "forge_duct.inp", conditions=conditions)
+        content = out_path.read_text(encoding="utf-8")
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Content-Disposition": "attachment; filename=forge_duct.inp"},
+    )
+
+
+@app.post("/api/v1/export/fmu")
+def download_fmu_package(spec: DuctSpec, conditions: Optional[PhysicsConditions] = None):
+    """Export FMI 2.0 Co-Simulation and Model Exchange (.fmu) digital twin package."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = export_fmu_package(spec, Path(tmp) / "forge_duct.fmu", conditions=conditions)
+        content = out_path.read_bytes()
+    return Response(
+        content=content,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": "attachment; filename=forge_duct.fmu"},
+    )
+
+
+@app.post("/api/v1/compliance/provenance")
+def provenance_passport_endpoint(
+    spec: DuctSpec,
+    conditions: Optional[PhysicsConditions] = None,
+):
+    """Generate a cryptographic Hardware Bill of Materials (HBOM) and SLSA provenance passport."""
+    passport = generate_hardware_provenance_passport(spec, conditions=conditions)
+    return {
+        "passport": passport.model_dump(mode="json"),
+        "signature_verified": verify_hardware_provenance(passport),
+    }
+
+
 @app.get("/viewer", response_class=HTMLResponse)
 def interactive_3d_viewer():
-    """Interactive Three.js 3D Web Studio rendering real manifold BufferGeometry and live physics."""
+    """Flagship Three.js 3D Web Studio 2.0 with AI Copilot, Presets, TopOpt, Heatmap, and Universal Open Exporters."""
     html = """<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>FORGE 3D Web Studio</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    #ui { position: absolute; top: 16px; left: 16px; background: rgba(15, 23, 42, 0.90); backdrop-filter: blur(10px); padding: 18px; border-radius: 10px; border: 1px solid #334155; width: 310px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-    #telemetry { position: absolute; top: 16px; right: 16px; background: rgba(15, 23, 42, 0.90); backdrop-filter: blur(10px); padding: 18px; border-radius: 10px; border: 1px solid #334155; width: 290px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-    h2 { margin: 0 0 10px 0; font-size: 16px; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; }
-    label { display: flex; justify-content: space-between; font-size: 12px; margin-top: 10px; color: #cbd5e1; }
+    body { margin: 0; overflow: hidden; background: #0b1120; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #copilot-bar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(12px); padding: 10px 14px; border-radius: 10px; border: 1px solid #38bdf8; width: 560px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); z-index: 10; }
+    #copilot-input { flex: 1; background: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 6px; padding: 7px 10px; font-size: 12px; }
+    #ui { position: absolute; top: 76px; left: 16px; background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(12px); padding: 16px; border-radius: 10px; border: 1px solid #334155; width: 315px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    #telemetry { position: absolute; top: 76px; right: 16px; background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(12px); padding: 16px; border-radius: 10px; border: 1px solid #334155; width: 305px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    h2 { margin: 0 0 8px 0; font-size: 15px; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; }
+    label { display: flex; justify-content: space-between; font-size: 12px; margin-top: 8px; color: #cbd5e1; }
     input[type=range] { width: 100%; accent-color: #38bdf8; cursor: pointer; }
-    select { width: 100%; margin-top: 4px; padding: 5px; background: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 4px; }
+    select { width: 100%; margin-top: 4px; padding: 5px; background: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 4px; font-size: 12px; }
     .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; background: #0284c7; color: #fff; font-size: 11px; }
-    .metric-row { display: flex; justify-content: space-between; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #1e293b; }
+    .metric-row { display: flex; justify-content: space-between; font-size: 12px; padding: 5px 0; border-bottom: 1px solid #1e293b; }
     .metric-val { font-weight: 600; color: #34d399; }
-    .btn-row { display: flex; gap: 8px; margin-top: 14px; }
-    button { flex: 1; padding: 7px; background: #2563eb; color: #fff; border: none; border-radius: 5px; font-size: 12px; cursor: pointer; font-weight: 600; }
+    .btn-row { display: flex; gap: 6px; margin-top: 10px; }
+    button { flex: 1; padding: 7px 9px; background: #2563eb; color: #fff; border: none; border-radius: 5px; font-size: 11px; cursor: pointer; font-weight: 600; }
     button:hover { background: #1d4ed8; }
+    button.secondary { background: #0f766e; }
+    button.secondary:hover { background: #115e59; }
+    #trace-box { margin-top: 10px; font-size: 11px; color: #94a3b8; max-height: 75px; overflow-y: auto; background: #0f172a; padding: 6px; border-radius: 4px; border: 1px solid #1e293b; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
+  <div id="copilot-bar">
+    <input id="copilot-input" type="text" value="80mm Delta fan to RTX 4090, bypass 15mm RAM obstacle on left, PC-CF" placeholder="Describe cooling duct requirements in natural language..." />
+    <button id="btn_copilot" style="flex: 0 0 130px;">AI Copilot Synthesize</button>
+  </div>
+
   <div id="ui">
-    <h2>FORGE 3D Studio <span class="badge">v0.2.0</span></h2>
+    <h2>FORGE 3D Studio <span class="badge">v0.2.0 Open</span></h2>
+    <label>Hardware Accelerator Preset</label>
+    <select id="sel_preset">
+      <option value="">-- Custom Parametric --</option>
+      <option value="H100_PCIe_1U_SanAce40">NVIDIA H100 PCIe 1U (40mm SanAce)</option>
+      <option value="RTX_4090_120mm_Blower_Conversion">NVIDIA RTX 4090 (120mm Conversion)</option>
+      <option value="L40S_80mm_Server_Duct">NVIDIA L40S / 6000 Ada (80mm Server)</option>
+      <option value="MI300X_OAM_120mm_HighFlow">AMD MI300X OAM (120mm Stratford)</option>
+      <option value="Quiet_Workstation_140mm_GPU">Quiet Workstation (140mm Noctua)</option>
+    </select>
     <label>Inlet Shape</label>
     <select id="sel_in_shape">
-      <option value="rectangular">Rectangular</option>
       <option value="circular">Circular (Server Fan)</option>
+      <option value="rectangular">Rectangular</option>
       <option value="rounded_rectangle">Rounded Rectangle</option>
     </select>
-    <label>Length (mm) <span id="lbl_l">110</span></label>
-    <input type="range" id="rng_l" min="50" max="200" value="110">
-    <label>Offset X (mm) <span id="lbl_ox">15</span></label>
-    <input type="range" id="rng_ox" min="-45" max="45" value="15">
+    <label>Length (mm) <span id="lbl_l">105</span></label>
+    <input type="range" id="rng_l" min="50" max="220" value="105">
+    <label>Offset X (mm) <span id="lbl_ox">10</span></label>
+    <input type="range" id="rng_ox" min="-45" max="45" value="10">
     <label>Corner Fillet (mm) <span id="lbl_cr">6</span></label>
-    <input type="range" id="rng_cr" min="0" max="20" value="6">
+    <input type="range" id="rng_cr" min="0" max="18" value="6">
     <label>Splitter Guide Vanes <span id="lbl_gv">1</span></label>
     <input type="range" id="rng_gv" min="0" max="4" value="1">
     <div class="btn-row">
-      <button id="btn_wire">Toggle Wireframe</button>
+      <button id="btn_bezier" class="secondary">Stratford Bezier</button>
+      <button id="btn_topopt" class="secondary">Darcy TopOpt</button>
+      <button id="btn_adjoint" class="secondary">PyTorch Adjoint</button>
     </div>
+    <div class="btn-row">
+      <button id="btn_wire">Wireframe</button>
+      <button id="btn_heatmap">Velocity Heatmap</button>
+    </div>
+    <div id="trace-box">Ready. Use sliders, presets, or the AI Copilot bar above.</div>
   </div>
 
   <div id="telemetry">
-    <h2>Live Physics & DFM</h2>
+    <h2>Live Multi-Physics & Open Export</h2>
     <div class="metric-row"><span>Total Pressure Drop (dP)</span><span class="metric-val" id="m_dp">-- Pa</span></div>
     <div class="metric-row"><span>Flow Uniformity (gamma)</span><span class="metric-val" id="m_uni">--</span></div>
     <div class="metric-row"><span>Reynolds Number</span><span class="metric-val" id="m_re">--</span></div>
@@ -448,6 +580,15 @@ def interactive_3d_viewer():
     <div class="metric-row"><span>Fan Operating Point</span><span class="metric-val" id="m_cfm">-- CFM</span></div>
     <div class="metric-row"><span>Solid Mass (PC-CF)</span><span class="metric-val" id="m_mass">-- g</span></div>
     <div class="metric-row"><span>Manifold Triangles</span><span class="metric-val" id="m_tris">--</span></div>
+    <div class="btn-row">
+      <button id="btn_dl_3mf">Slicer .3MF</button>
+      <button id="btn_dl_glb">WebGL .GLB</button>
+      <button id="btn_dl_usda">Omniverse .USDA</button>
+    </div>
+    <div class="btn-row">
+      <button id="btn_dl_inp" class="secondary">CalculiX .INP FEA</button>
+      <button id="btn_dl_fmu" class="secondary">FMI 2.0 .FMU Twin</button>
+    </div>
   </div>
 
   <script>
@@ -457,10 +598,10 @@ def interactive_3d_viewer():
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    const light1 = new THREE.DirectionalLight(0xffffff, 1.1);
-    light1.position.set(120, 180, 160);
+    const light1 = new THREE.DirectionalLight(0xffffff, 1.15);
+    light1.position.set(130, 180, 160);
     scene.add(light1);
-    const light2 = new THREE.DirectionalLight(0x38bdf8, 0.5);
+    const light2 = new THREE.DirectionalLight(0x38bdf8, 0.55);
     light2.position.set(-120, -100, -80);
     scene.add(light2);
     scene.add(new THREE.AmbientLight(0x404040, 1.5));
@@ -469,35 +610,43 @@ def interactive_3d_viewer():
     grid.rotation.x = Math.PI / 2;
     scene.add(grid);
 
-    camera.position.set(170, -160, 150);
+    camera.position.set(175, -165, 150);
     camera.lookAt(0, 0, 55);
 
     let mesh = null;
     let wireframeMode = false;
+    let heatmapMode = false;
+    let currentSpec = {
+      inlet_width: 120,
+      inlet_height: 120,
+      outlet_width: 136,
+      outlet_height: 61,
+      length: 105,
+      wall: 2.2,
+      offset_x: 10,
+      offset_y: 0.0,
+      corner_radius: 6,
+      inlet_shape: "circular",
+      outlet_shape: "rounded_rectangle",
+      preserve_normal_thickness: true,
+      guide_vanes: 1,
+      material: "PC-CF"
+    };
 
-    async function updateDuctMesh() {
-      const payload = {
-        spec: {
-          inlet_width: 120,
-          inlet_height: 120,
-          outlet_width: 140,
-          outlet_height: 48,
-          length: parseFloat(document.getElementById('rng_l').value),
-          wall: 2.2,
-          offset_x: parseFloat(document.getElementById('rng_ox').value),
-          offset_y: 0.0,
-          corner_radius: parseFloat(document.getElementById('rng_cr').value),
-          inlet_shape: document.getElementById('sel_in_shape').value,
-          outlet_shape: "rectangular",
-          guide_vanes: parseInt(document.getElementById('rng_gv').value),
-          material: "PC-CF"
-        }
-      };
+    function syncSpecFromSliders() {
+      currentSpec.length = parseFloat(document.getElementById('rng_l').value);
+      currentSpec.offset_x = parseFloat(document.getElementById('rng_ox').value);
+      currentSpec.corner_radius = parseFloat(document.getElementById('rng_cr').value);
+      currentSpec.inlet_shape = document.getElementById('sel_in_shape').value;
+      currentSpec.guide_vanes = parseInt(document.getElementById('rng_gv').value);
+    }
 
+    async function renderSpec(specObj) {
+      currentSpec = specObj;
       const res = await fetch('/api/v1/mesh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ spec: currentSpec })
       });
       const data = await res.json();
 
@@ -512,10 +661,23 @@ def interactive_3d_viewer():
       geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geom.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
 
+      if (heatmapMode) {
+        const colors = new Float32Array(positions.length);
+        const maxZ = Math.max(1.0, currentSpec.length);
+        for (let i = 0; i < positions.length; i += 3) {
+          const frac = Math.min(1.0, Math.max(0.0, positions[i + 2] / maxZ));
+          colors[i] = 0.15 + 0.80 * (1.0 - frac);
+          colors[i + 1] = 0.75 * Math.sin(Math.PI * frac);
+          colors[i + 2] = 0.25 + 0.75 * frac;
+        }
+        geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      }
+
       const mat = new THREE.MeshStandardMaterial({
-        color: 0x38bdf8,
-        roughness: 0.35,
-        metalness: 0.15,
+        color: heatmapMode ? 0xffffff : 0x38bdf8,
+        vertexColors: heatmapMode,
+        roughness: 0.32,
+        metalness: 0.18,
         side: THREE.DoubleSide,
         wireframe: wireframeMode
       });
@@ -536,20 +698,98 @@ def interactive_3d_viewer():
       document.getElementById(id).oninput = (e) => {
         const map = { rng_l: 'lbl_l', rng_ox: 'lbl_ox', rng_cr: 'lbl_cr', rng_gv: 'lbl_gv' };
         if (map[id]) document.getElementById(map[id]).innerText = e.target.value;
-        updateDuctMesh();
+        syncSpecFromSliders();
+        renderSpec(currentSpec);
       };
     });
+
+    document.getElementById('sel_preset').onchange = async (e) => {
+      if (!e.target.value) return;
+      const r = await fetch('/api/v1/presets/' + e.target.value);
+      const d = await r.json();
+      document.getElementById('trace-box').innerText = 'Loaded Preset: ' + d.description;
+      await renderSpec(d.spec);
+    };
+
+    document.getElementById('btn_copilot').onclick = async () => {
+      const prompt = document.getElementById('copilot-input').value;
+      document.getElementById('trace-box').innerText = 'Synthesizing via AI Copilot...';
+      const r = await fetch('/api/v1/copilot?prompt=' + encodeURIComponent(prompt), { method: 'POST' });
+      const d = await r.json();
+      document.getElementById('trace-box').innerText = d.reasoning_trace.join(' | ');
+      await renderSpec(d.spec);
+    };
+
+    document.getElementById('btn_bezier').onclick = async () => {
+      document.getElementById('trace-box').innerText = 'Running Stratford Bezier Diffuser Optimization...';
+      const r = await fetch('/api/v1/bezier-optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spec: currentSpec })
+      });
+      const d = await r.json();
+      document.getElementById('trace-box').innerText = 'Bezier Opt: dP reduced by ' + d.summary.dp_reduction_pct + '%';
+      await renderSpec(d.optimized_spec);
+    };
+
+    document.getElementById('btn_topopt').onclick = async () => {
+      document.getElementById('trace-box').innerText = 'Running Brinkman-Darcy Fluid Topology Optimization...';
+      const r = await fetch('/api/v1/topopt?iterations=12', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spec: currentSpec })
+      });
+      const d = await r.json();
+      document.getElementById('trace-box').innerText = 'Darcy TopOpt: dissipation -' + d.topopt_result.dissipation_reduction_pct + '%';
+      await renderSpec(d.topopt_result.optimized_spec);
+    };
+
+    document.getElementById('btn_adjoint').onclick = async () => {
+      document.getElementById('trace-box').innerText = 'Running PyTorch Differentiable Adjoint Co-Design...';
+      const r = await fetch('/api/v1/opt/adjoint?steps=35', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spec: currentSpec })
+      });
+      const d = await r.json();
+      document.getElementById('trace-box').innerText = 'PyTorch Adjoint: dP -' + d.pressure_drop_reduction_pct + '%, Hotspot -' + d.hotspot_reduction_c + ' C';
+      await renderSpec(d.optimized_spec);
+    };
 
     document.getElementById('btn_wire').onclick = () => {
       wireframeMode = !wireframeMode;
       if (mesh) mesh.material.wireframe = wireframeMode;
     };
 
-    updateDuctMesh();
+    document.getElementById('btn_heatmap').onclick = () => {
+      heatmapMode = !heatmapMode;
+      renderSpec(currentSpec);
+    };
+
+    async function downloadFormat(endpoint, filename) {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentSpec)
+      });
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+    }
+
+    document.getElementById('btn_dl_3mf').onclick = () => downloadFormat('/api/v1/export/slicer-3mf', 'forge_slicer.3mf');
+    document.getElementById('btn_dl_glb').onclick = () => downloadFormat('/api/v1/export/glb', 'forge_duct.glb');
+    document.getElementById('btn_dl_usda').onclick = () => downloadFormat('/api/v1/export/openusd', 'forge_twin.usda');
+    document.getElementById('btn_dl_inp').onclick = () => downloadFormat('/api/v1/export/calculix', 'forge_duct.inp');
+    document.getElementById('btn_dl_fmu').onclick = () => downloadFormat('/api/v1/export/fmu', 'forge_duct.fmu');
+
+    renderSpec(currentSpec);
 
     function animate() {
       requestAnimationFrame(animate);
-      if (mesh) mesh.rotation.z += 0.004;
+      if (mesh) mesh.rotation.z += 0.0035;
       renderer.render(scene, camera);
     }
     animate();

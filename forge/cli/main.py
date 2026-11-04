@@ -46,6 +46,18 @@ from forge.compliance.dossier import (
     export_compliance_dossier_markdown,
     generate_compliance_dossier,
 )
+from forge.interop.openusd import export_openusd_stage
+from forge.interop.modelica import export_modelica_component
+from forge.interop.mcp_server import get_openai_tool_schemas
+from forge.interop.open_schemas import export_all_json_schemas
+from forge.cad.tpms import TPMSSpec, build_tpms_lattice_mesh, evaluate_tpms_thermo_hydraulics
+from forge.opt.differentiable_adjoint import run_differentiable_adjoint_codesign
+from forge.interop.calculix_fea import export_calculix_inp
+from forge.interop.fmi_fmu import export_fmu_package
+from forge.compliance.provenance import (
+    generate_hardware_provenance_passport,
+    verify_hardware_provenance,
+)
 
 app = typer.Typer(
     name="forge",
@@ -92,6 +104,10 @@ def generate(
         (out / "duct.gltf").write_text(export_gltf(tris), encoding="utf-8")
     elif format == "glb":
         (out / "duct.glb").write_bytes(export_glb(tris))
+    elif format == "usda":
+        (out / "duct.usda").write_text(export_openusd_stage(spec, triangles=tris), encoding="utf-8")
+    elif format == "modelica":
+        (out / "duct.mo").write_text(export_modelica_component(spec), encoding="utf-8")
     else:
         raise typer.BadParameter(f"Unsupported format: {format}")
 
@@ -449,6 +465,110 @@ def cad_script(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(code, encoding="utf-8")
     console.print(f"[bold green][OK][/bold green] Exported {target.upper()} parametric script to [cyan]{out}[/cyan]")
+
+
+@app.command()
+def interop(
+    target: str = typer.Option(
+        "schemas",
+        "--target",
+        "-t",
+        help="Interop target: schemas, tools, openusd, modelica, calculix, fmu",
+    ),
+    spec_path: Path = typer.Option(Path("examples/duct.json"), "--spec", "-s", help="Path to spec JSON"),
+    out: Path = typer.Option(Path("forge_interop.json"), "--out", "-o", help="Output file path"),
+):
+    """Export open standards: Draft 2020-12 JSON Schemas, MCP Tools, OpenUSD (.usda), Modelica (.mo), CalculiX FEA (.inp), or FMI 2.0 (.fmu)."""
+    t = target.lower()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if t == "schemas":
+        out.write_text(json.dumps(export_all_json_schemas(), indent=2) + "\n", encoding="utf-8")
+    elif t == "tools":
+        out.write_text(json.dumps({"tools": get_openai_tool_schemas()}, indent=2) + "\n", encoding="utf-8")
+    elif t == "openusd":
+        spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+        out.write_text(export_openusd_stage(spec), encoding="utf-8")
+    elif t == "modelica":
+        spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+        out.write_text(export_modelica_component(spec), encoding="utf-8")
+    elif t == "calculix":
+        spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+        export_calculix_inp(spec, out)
+    elif t == "fmu":
+        spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+        export_fmu_package(spec, out)
+    else:
+        raise typer.BadParameter(
+            f"Unknown interop target '{target}'. Choose schemas, tools, openusd, modelica, calculix, or fmu."
+        )
+    console.print(f"[bold green][OK][/bold green] Exported open interop target [cyan]{target}[/cyan] to [green]{out}[/green]")
+
+
+@app.command()
+def tpms(
+    lattice_type: str = typer.Option("gyroid", "--type", help="TPMS family: gyroid, schwarz_p, diamond"),
+    unit_cell_mm: float = typer.Option(8.0, "--cell", help="Unit cell wavelength (mm)"),
+    porosity_inlet: float = typer.Option(0.72, "--porosity-in", help="Inlet porosity (0.35-0.92)"),
+    porosity_outlet: float = typer.Option(0.65, "--porosity-out", help="Outlet porosity (0.35-0.92)"),
+    flow_cfm: float = typer.Option(120.0, "--cfm", help="Volumetric airflow in CFM"),
+    out_stl: Path = typer.Option(Path("tpms_core.stl"), "--out", "-o", help="Output binary STL path"),
+):
+    """Synthesize a 3D TPMS (Gyroid/Schwarz-P/Diamond) metamaterial heat-exchanger core and evaluate thermo-hydraulics."""
+    spec = TPMSSpec(
+        lattice_type=lattice_type,  # type: ignore[arg-type]
+        unit_cell_mm=unit_cell_mm,
+        porosity_inlet=porosity_inlet,
+        porosity_outlet=porosity_outlet,
+    )
+    rep = evaluate_tpms_thermo_hydraulics(spec, flow_cfm=flow_cfm)
+    tris = build_tpms_lattice_mesh(spec, grid_nx=12, grid_ny=10, grid_nz=10)
+    out_stl.parent.mkdir(parents=True, exist_ok=True)
+    out_stl.write_bytes(export_binary_stl(tris))
+    console.print(f"[bold cyan]TPMS Metamaterial Core ({rep.lattice_type})[/bold cyan]")
+    console.print(f"- Specific Surface Area: [green]{rep.specific_surface_area_m2_m3} m^2/m^3[/green] (Wetted: {rep.total_wetted_area_cm2} cm^2)")
+    console.print(f"- Nusselt / Convective h:[green]{rep.nusselt_number}[/green] / [green]{rep.convective_h_w_m2k} W/m^2K[/green]")
+    console.print(f"- Pressure Drop:         [yellow]{rep.pressure_drop_pa} Pa[/yellow] | Heat Capacity @ 40K: [bold green]{rep.heat_dissipation_at_40k_delta_w} W[/bold green]")
+    console.print(f"[bold green][OK][/bold green] Exported {len(tris)} TPMS triangles to [cyan]{out_stl}[/cyan]")
+
+
+@app.command()
+def adjoint(
+    spec_path: Path = typer.Argument(..., help="Path to FORGE duct JSON specification"),
+    steps: int = typer.Option(40, "--steps", help="PyTorch autograd optimization steps"),
+    out: Path = typer.Option(Path("adjoint_codesign.json"), "--out", "-o", help="Output co-optimized JSON path"),
+):
+    """Run PyTorch end-to-end differentiable adjoint co-design of duct loft and finned heatsink."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    res = run_differentiable_adjoint_codesign(spec, steps=steps)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(res.model_dump(mode="json"), indent=2) + "\n", encoding="utf-8")
+    console.print("[bold cyan]PyTorch Differentiable Adjoint Co-Design Complete[/bold cyan]")
+    console.print(
+        f"- Pressure Drop: [yellow]{res.initial_pressure_drop_pa} Pa[/yellow] -> "
+        f"[green]{res.optimized_pressure_drop_pa} Pa[/green] (-{res.pressure_drop_reduction_pct}%)"
+    )
+    console.print(
+        f"- Die Hotspot:   [yellow]{res.initial_hotspot_temp_c} C[/yellow] -> "
+        f"[green]{res.optimized_hotspot_temp_c} C[/green] (-{res.hotspot_reduction_c} C)"
+    )
+    console.print(f"- Adjoint Grads: {res.adjoint_sensitivities}")
+
+
+@app.command()
+def provenance(
+    spec_path: Path = typer.Argument(..., help="Path to FORGE duct JSON specification"),
+    out: Path = typer.Option(Path("forge_passport.json"), "--out", "-o", help="Output cryptographic passport JSON"),
+):
+    """Generate a cryptographic Hardware Bill of Materials (HBOM) and SLSA provenance attestation passport."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    passport = generate_hardware_provenance_passport(spec)
+    verified = verify_hardware_provenance(passport)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(passport.model_dump(mode="json"), indent=2) + "\n", encoding="utf-8")
+    console.print(
+        f"[bold green][OK][/bold green] Generated Cryptographic Passport [cyan]{passport.passport_id}[/cyan] "
+        f"(Unit Cost: ${passport.total_estimated_unit_cost_usd:.2f}, Verified: {verified}) at [green]{out}[/green]"
+    )
 
 
 @app.command()
