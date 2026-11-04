@@ -1,7 +1,18 @@
 """Command-line interface for the FORGE generative physical design platform."""
 from __future__ import annotations
+
 import json
 from pathlib import Path
+import sys
+
+# Ensure stdout handles UTF-8 on Windows
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -577,9 +588,9 @@ def demo(
 ):
     """Execute end-to-end multi-disciplinary hardware inverse design showcase."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    console.print("[bold cyan]═════════════════════════════════════════════════════════════════[/bold cyan]")
+    console.print("[bold cyan]=================================================================[/bold cyan]")
     console.print("[bold cyan]  FORGE: Bleeding-Edge Physical AI Inverse Design Showcase       [/bold cyan]")
-    console.print("[bold cyan]═════════════════════════════════════════════════════════════════[/bold cyan]\n")
+    console.print("[bold cyan]=================================================================[/bold cyan]\n")
 
     # 1. AI Copilot Synthesis
     console.print("[bold yellow]1. AI Copilot Synthesis & Obstacle Bypass...[/bold yellow]")
@@ -587,7 +598,7 @@ def demo(
     copilot_res = synthesize_from_prompt(prompt, optimize_profile=True)
     spec = copilot_res.spec
     console.print(
-        f"   [green]✓[/green] Synthesized {spec.inlet_width}x{spec.inlet_height} -> "
+        f"   [green][OK][/green] Synthesized {spec.inlet_width}x{spec.inlet_height} -> "
         f"{spec.outlet_width}x{spec.outlet_height}mm shroud ({spec.material.value})"
     )
 
@@ -596,12 +607,12 @@ def demo(
     adj = run_differentiable_adjoint_codesign(spec, steps=25)
     opt_spec = adj.optimized_spec
     console.print(
-        f"   [green]✓[/green] Adjoint dP: {adj.initial_pressure_drop_pa:.2f} Pa -> "
+        f"   [green][OK][/green] Adjoint dP: {adj.initial_pressure_drop_pa:.2f} Pa -> "
         f"{adj.optimized_pressure_drop_pa:.2f} Pa (-{adj.pressure_drop_reduction_pct}%)"
     )
     console.print(
-        f"   [green]✓[/green] Hotspot Die: {adj.initial_hotspot_temp_c:.1f}°C -> "
-        f"{adj.optimized_hotspot_temp_c:.1f}°C (-{adj.hotspot_reduction_c:.1f}°C)"
+        f"   [green][OK][/green] Hotspot Die: {adj.initial_hotspot_temp_c:.1f} C -> "
+        f"{adj.optimized_hotspot_temp_c:.1f} C (-{adj.hotspot_reduction_c:.1f} C)"
     )
 
     # 3. TPMS Metamaterial Core
@@ -617,7 +628,7 @@ def demo(
     tpms_tris = build_tpms_lattice_mesh(tpms_spec, grid_nx=10, grid_ny=8, grid_nz=8)
     tpms_path.write_bytes(export_binary_stl(tpms_tris))
     console.print(
-        f"   [green]✓[/green] Specific surface area: {tpms_rep.specific_surface_area_m2_m3:.1f} m²/m³ | "
+        f"   [green][OK][/green] Specific surface area: {tpms_rep.specific_surface_area_m2_m3:.1f} m^2/m^3 | "
         f"Heat Cap @40K: {tpms_rep.heat_dissipation_at_40k_delta_w:.1f} W"
     )
 
@@ -629,10 +640,10 @@ def demo(
     mo_path.write_text(export_modelica_component(opt_spec), encoding="utf-8")
     inp_path = export_calculix_inp(opt_spec, out_dir / "forge_fea.inp")
     fmu_path = export_fmu_package(opt_spec, out_dir / "forge_twin.fmu")
-    console.print(f"   [green]✓[/green] OpenUSD Omniverse Stage : {usd_path}")
-    console.print(f"   [green]✓[/green] Modelica 1D Component   : {mo_path}")
-    console.print(f"   [green]✓[/green] CalculiX 3D FEA Deck    : {inp_path}")
-    console.print(f"   [green]✓[/green] FMI 2.0 Digital Twin FMU: {fmu_path}")
+    console.print(f"   [green][OK][/green] OpenUSD Omniverse Stage : {usd_path}")
+    console.print(f"   [green][OK][/green] Modelica 1D Component   : {mo_path}")
+    console.print(f"   [green][OK][/green] CalculiX 3D FEA Deck    : {inp_path}")
+    console.print(f"   [green][OK][/green] FMI 2.0 Digital Twin FMU: {fmu_path}")
 
     # 5. Cryptographic Hardware Passport
     console.print("[bold yellow]5. Cryptographic SLSA Provenance Passport...[/bold yellow]")
@@ -640,8 +651,14 @@ def demo(
     verified = verify_hardware_provenance(passport)
     pass_path = out_dir / "passport.json"
     pass_path.write_text(json.dumps(passport.model_dump(mode="json"), indent=2), encoding="utf-8")
-    console.print(f"   [green]✓[/green] Passport ID: {passport.passport_id} (HMAC: {'VERIFIED ✓' if verified else 'FAILED'})")
-    console.print(f"   [green]✓[/green] Unit Cost  : ${passport.total_estimated_unit_cost_usd:.2f} (Filament + Machine + Fasteners)")
+    console.print(
+        f"   [green][OK][/green] Passport ID: {passport.passport_id} (HMAC: {'VERIFIED [OK]' if verified else 'FAILED'})"
+    )
+    console.print(
+        f"   [green][OK][/green] Unit Cost  : ${passport.total_estimated_unit_cost_usd:.2f} (Filament + Machine + Fasteners)"
+    )
+
+    console.print(f"\n[bold green]All showcase deliverables compiled in {out_dir}/[/bold green]")
 
     console.print(f"\n[bold green]All showcase deliverables compiled in {out_dir}/[/bold green]")
 
