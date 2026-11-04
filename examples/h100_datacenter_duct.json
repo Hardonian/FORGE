@@ -1,0 +1,32 @@
+{
+  "inlet_width": 80.0,
+  "inlet_height": 80.0,
+  "outlet_width": 112.0,
+  "outlet_height": 42.0,
+  "length": 105.0,
+  "wall": 2.2,
+  "offset_x": 8.0,
+  "offset_y": 0.0,
+  "corner_radius": 5.0,
+  "inlet_shape": "circular",
+  "outlet_shape": "rounded_rectangle",
+  "preserve_normal_thickness": true,
+  "guide_vanes": 2,
+  "fan_standard": "80mm",
+  "flange_thickness": 3.0,
+  "material": "PC-CF",
+  "width_profile_ctrl": [92.0, 106.0],
+  "height_profile_ctrl": [68.0, 50.0],
+  "obstacles": [
+    {
+      "name": "DIMM_RAM_Slot_1",
+      "min_x": -45.0,
+      "max_x": -30.0,
+      "min_y": -12.0,
+      "max_y": 12.0,
+      "min_z": 25.0,
+      "max_z": 75.0,
+      "clearance_mm": 2.5
+    }
+  ]
+}

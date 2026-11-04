@@ -572,6 +572,81 @@ def provenance(
 
 
 @app.command()
+def demo(
+    out_dir: Path = typer.Option(Path("runs/demo"), "--out", "-o", help="Output directory for generated assets"),
+):
+    """Execute end-to-end multi-disciplinary hardware inverse design showcase."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    console.print("[bold cyan]═════════════════════════════════════════════════════════════════[/bold cyan]")
+    console.print("[bold cyan]  FORGE: Bleeding-Edge Physical AI Inverse Design Showcase       [/bold cyan]")
+    console.print("[bold cyan]═════════════════════════════════════════════════════════════════[/bold cyan]\n")
+
+    # 1. AI Copilot Synthesis
+    console.print("[bold yellow]1. AI Copilot Synthesis & Obstacle Bypass...[/bold yellow]")
+    prompt = "80mm Delta server fan to NVIDIA H100 PCIe accelerator, bypass 15mm RAM stick on left, PC-CF"
+    copilot_res = synthesize_from_prompt(prompt, optimize_profile=True)
+    spec = copilot_res.spec
+    console.print(
+        f"   [green]✓[/green] Synthesized {spec.inlet_width}x{spec.inlet_height} -> "
+        f"{spec.outlet_width}x{spec.outlet_height}mm shroud ({spec.material.value})"
+    )
+
+    # 2. PyTorch Differentiable Adjoint Co-Design
+    console.print("[bold yellow]2. PyTorch Differentiable Adjoint Co-Design...[/bold yellow]")
+    adj = run_differentiable_adjoint_codesign(spec, steps=25)
+    opt_spec = adj.optimized_spec
+    console.print(
+        f"   [green]✓[/green] Adjoint dP: {adj.initial_pressure_drop_pa:.2f} Pa -> "
+        f"{adj.optimized_pressure_drop_pa:.2f} Pa (-{adj.pressure_drop_reduction_pct}%)"
+    )
+    console.print(
+        f"   [green]✓[/green] Hotspot Die: {adj.initial_hotspot_temp_c:.1f}°C -> "
+        f"{adj.optimized_hotspot_temp_c:.1f}°C (-{adj.hotspot_reduction_c:.1f}°C)"
+    )
+
+    # 3. TPMS Metamaterial Core
+    console.print("[bold yellow]3. TPMS Gyroid Metamaterial Synthesis...[/bold yellow]")
+    tpms_spec = TPMSSpec(
+        lattice_type="gyroid",
+        width_mm=opt_spec.outlet_width,
+        height_mm=opt_spec.outlet_height,
+        length_mm=30.0,
+    )
+    tpms_rep = evaluate_tpms_thermo_hydraulics(tpms_spec)
+    tpms_path = out_dir / "tpms_gyroid.stl"
+    tpms_tris = build_tpms_lattice_mesh(tpms_spec, grid_nx=10, grid_ny=8, grid_nz=8)
+    tpms_path.write_bytes(export_binary_stl(tpms_tris))
+    console.print(
+        f"   [green]✓[/green] Specific surface area: {tpms_rep.specific_surface_area_m2_m3:.1f} m²/m³ | "
+        f"Heat Cap @40K: {tpms_rep.heat_dissipation_at_40k_delta_w:.1f} W"
+    )
+
+    # 4. Universal Open Standards Export
+    console.print("[bold yellow]4. Universal Open Standards Digital Twin Export...[/bold yellow]")
+    usd_path = out_dir / "forge_twin.usda"
+    usd_path.write_text(export_openusd_stage(opt_spec), encoding="utf-8")
+    mo_path = out_dir / "forge_component.mo"
+    mo_path.write_text(export_modelica_component(opt_spec), encoding="utf-8")
+    inp_path = export_calculix_inp(opt_spec, out_dir / "forge_fea.inp")
+    fmu_path = export_fmu_package(opt_spec, out_dir / "forge_twin.fmu")
+    console.print(f"   [green]✓[/green] OpenUSD Omniverse Stage : {usd_path}")
+    console.print(f"   [green]✓[/green] Modelica 1D Component   : {mo_path}")
+    console.print(f"   [green]✓[/green] CalculiX 3D FEA Deck    : {inp_path}")
+    console.print(f"   [green]✓[/green] FMI 2.0 Digital Twin FMU: {fmu_path}")
+
+    # 5. Cryptographic Hardware Passport
+    console.print("[bold yellow]5. Cryptographic SLSA Provenance Passport...[/bold yellow]")
+    passport = generate_hardware_provenance_passport(opt_spec)
+    verified = verify_hardware_provenance(passport)
+    pass_path = out_dir / "passport.json"
+    pass_path.write_text(json.dumps(passport.model_dump(mode="json"), indent=2), encoding="utf-8")
+    console.print(f"   [green]✓[/green] Passport ID: {passport.passport_id} (HMAC: {'VERIFIED ✓' if verified else 'FAILED'})")
+    console.print(f"   [green]✓[/green] Unit Cost  : ${passport.total_estimated_unit_cost_usd:.2f} (Filament + Machine + Fasteners)")
+
+    console.print(f"\n[bold green]All showcase deliverables compiled in {out_dir}/[/bold green]")
+
+
+@app.command()
 def serve(
     host: str = typer.Option("127.0.0.1", "--host", help="Server host"),
     port: int = typer.Option(8000, "--port", help="Server port"),

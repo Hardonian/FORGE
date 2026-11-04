@@ -1,0 +1,11 @@
+{
+  "lattice_type": "gyroid",
+  "width_mm": 112.0,
+  "height_mm": 42.0,
+  "length_mm": 35.0,
+  "unit_cell_mm": 7.5,
+  "porosity_inlet": 0.75,
+  "porosity_outlet": 0.62,
+  "wall_thickness_mm": 1.0,
+  "thermal_conductivity_w_mk": 165.0
+}

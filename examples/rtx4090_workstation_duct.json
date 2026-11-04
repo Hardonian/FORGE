@@ -1,0 +1,20 @@
+{
+  "inlet_width": 120.0,
+  "inlet_height": 120.0,
+  "outlet_width": 136.0,
+  "outlet_height": 61.0,
+  "length": 115.0,
+  "wall": 2.0,
+  "offset_x": 12.0,
+  "offset_y": -4.0,
+  "corner_radius": 8.0,
+  "inlet_shape": "circular",
+  "outlet_shape": "rounded_rectangle",
+  "preserve_normal_thickness": true,
+  "guide_vanes": 1,
+  "fan_standard": "120mm",
+  "flange_thickness": 3.0,
+  "material": "PETG",
+  "width_profile_ctrl": [126.0, 134.0],
+  "height_profile_ctrl": [102.0, 75.0]
+}
