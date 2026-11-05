@@ -51,7 +51,14 @@ class DigitalTwinOnlineTracker:
     """Online state estimator tracking filter dust loading and TIM degradation over telemetry streams."""
 
     def __init__(self, spec: DuctSpec | None = None, baseline_r_tim: float = 0.022):
-        self.spec = spec or DuctSpec()
+        self.spec = spec or DuctSpec(
+            inlet_width=120.0,
+            inlet_height=80.0,
+            outlet_width=100.0,
+            outlet_height=60.0,
+            length=120.0,
+            wall=2.0,
+        )
         self.baseline_r_tim = baseline_r_tim
         self.cond = PhysicsConditions()
         self.nominal_physics = solve_duct_physics(self.spec, self.cond)

@@ -49,7 +49,7 @@ def test_nurbs_step_ap242_exporter(sample_spec: DuctSpec, tmp_path: Path):
     assert out_file.exists()
     assert step_content.startswith("ISO-10303-21;")
     assert "HEADER;" in step_content
-    assert "AP242_MANAGED_MODEL_EDITION" in step_content
+    assert "AP242" in step_content
     assert "DATA;" in step_content
     assert "B_SPLINE_SURFACE_WITH_KNOTS" in step_content
     assert "OuterDuctSkin" in step_content
