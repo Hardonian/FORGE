@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forge-cad"
-version = "0.2.0"
+version = "1.0.0"
 description = "Physics-informed generative inverse-design platform for AI accelerator thermal management."
 readme = "README.md"
 authors = [{ name = "FORGE Project Authors" }]
 license = { text = "MIT" }
 requires-python = ">=3.10"
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

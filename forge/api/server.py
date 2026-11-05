@@ -674,7 +674,7 @@ def interactive_3d_viewer():
   </div>
 
   <div id="ui">
-    <h2>FORGE 3D Studio <span class="badge">v0.2.0 Open</span></h2>
+    <h2>FORGE 3D Studio <span class="badge">v1.0.0 Stable GA</span></h2>
     <label>Hardware Accelerator Preset</label>
     <select id="sel_preset">
       <option value="">-- Custom Parametric --</option>

@@ -3,7 +3,7 @@
 [![CI](https://github.com/example/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/example/forge/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version: 0.2.0](https://img.shields.io/badge/version-0.2.0-green.svg)](https://github.com/example/forge)
+[![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/example/forge)
 
 **FORGE** is an open-source, physics-informed generative inverse engineering platform for specialized thermal and fluid hardware. Its initial domain is custom high-efficiency cooling ducts and transition baffles for heterogeneous AI accelerators (GPUs, TPUs, workstation blower conversions, and high-density server racks).
 

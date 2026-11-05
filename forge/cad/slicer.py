@@ -183,7 +183,7 @@ def export_production_slicer_3mf(
     model_xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n'
-        '  <metadata name="Application">FORGE Generative CAD Engine v0.2.0</metadata>\n'
+        '  <metadata name="Application">FORGE Generative CAD Engine v1.0.0</metadata>\n'
         f'  <metadata name="Material">{spec.material.value}</metadata>\n'
         f'  <metadata name="TargetPrinter">{printer_profile}</metadata>\n'
         "  <resources>\n"

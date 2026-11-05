@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: forge-inverse-design:v0.2.0
+    image: forge-inverse-design:v1.0.0
     container_name: forge_studio
     restart: unless-stopped
     ports:
@@ -37,7 +37,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: forge-inverse-design:v0.2.0
+    image: forge-inverse-design:v1.0.0
     container_name: forge_batch_worker
     restart: "no"
     profiles:

@@ -103,7 +103,7 @@ def export_exact_nurbs_step(spec: DuctSpec, output_path: str | Path | None = Non
         "ISO-10303-21;",
         "HEADER;",
         "FILE_DESCRIPTION(('FORGE Exact AP242 NURBS B-Spline CAD Model'), '2;1');",
-        f"FILE_NAME('FORGE_{spec_hash}.stp', '2026-11-04T19:00:00', ('FORGE Generative Hardware'), ('Autonomous Inverse Engineering'), 'FORGE v0.2.0', 'FORGE Kernel', '');",
+        f"FILE_NAME('FORGE_{spec_hash}.stp', '2026-11-04T19:00:00', ('FORGE Generative Hardware'), ('Autonomous Inverse Engineering'), 'FORGE v1.0.0', 'FORGE Kernel', '');",
         "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'));",
         "ENDSEC;",
         "DATA;",

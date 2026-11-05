@@ -83,6 +83,9 @@ def evaluate_ocp_compliance(
     elif form_factor == OCPFormFactor.ORV3_2OU:
         limit_h = 88.0
         ref = "OCP-ORV3-MECH-3.2 (2OU Maximum Envelope)"
+    elif form_factor == OCPFormFactor.CUSTOM_HYPERSCALE:
+        limit_h = 120.0
+        ref = "OCP-Hyperscale-Custom-Tray (120mm Maximum Enclosure Height)"
     else:  # OAM_V2
         limit_h = 58.0
         ref = "OCP-OAM-v2.0-SPEC-Sec4.2 (Z-Height Envelope)"

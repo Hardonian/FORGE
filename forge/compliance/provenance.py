@@ -54,7 +54,7 @@ class DryingAndProcessSpec(BaseModel):
 class HardwareProvenancePassport(BaseModel):
     """SLSA-style cryptographic Hardware Bill of Materials & Provenance Attestation."""
 
-    schema_version: str = "https://forge.dev/schemas/v0.2.0/HardwareProvenancePassport.json"
+    schema_version: str = "https://forge.dev/schemas/v1.0.0/HardwareProvenancePassport.json"
     passport_id: str
     generated_at_utc: str
     spec_sha256: str

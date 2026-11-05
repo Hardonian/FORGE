@@ -50,7 +50,7 @@ def export_fmu_package(
   modelName="{model_id}"
   guid="{{{fmu_guid}}}"
   description="FORGE Generative Air-Cooling Shroud Digital Twin ({spec.inlet_width}x{spec.inlet_height}mm to {spec.outlet_width}x{spec.outlet_height}mm, {mat_key})"
-  generationTool="FORGE Physical AI Platform v0.2.0"
+  generationTool="FORGE Physical AI Platform v1.0.0"
   variableNamingConvention="structured"
   numberOfEventIndicators="0">
 

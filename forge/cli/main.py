@@ -893,8 +893,54 @@ def demo(
         f"Heat Cap @40K: {tpms_rep.heat_dissipation_at_40k_delta_w:.1f} W"
     )
 
-    # 4. Universal Open Standards Export
-    console.print("[bold yellow]4. Universal Open Standards Digital Twin Export...[/bold yellow]")
+    # 4. Heterogeneous Multi-Die CoWoS 2.5D/3D Packaging
+    console.print("[bold yellow]4. Heterogeneous Multi-Die CoWoS 2.5D/3D Thermal Network...[/bold yellow]")
+    cowos_spec = CoWoSPackageSpec(
+        logic_die_power_w=720.0,
+        hbm_stack_count=8,
+        hbm_power_per_stack_w=38.0,
+        vrm_power_w=95.0,
+    )
+    cowos_rep = solve_cowos_multidie_thermal_network(cowos_spec)
+    cowos_path = out_dir / "cowos_thermal.json"
+    cowos_path.write_text(json.dumps(cowos_rep.model_dump(mode="json"), indent=2), encoding="utf-8")
+    logic_die = next((c for c in cowos_rep.components if "Logic" in c.name), cowos_rep.components[0])
+    console.print(
+        f"   [green][OK][/green] Logic Die Tj: {logic_die.junction_temp_c:.1f} °C (Max {logic_die.max_junction_temp_c:.0f} °C) | "
+        f"Margin: {cowos_rep.critical_thermal_margin_c:.1f} °C | Status: {cowos_rep.summary_verdict}"
+    )
+
+    # 5. Direct-to-Chip (D2C) Liquid Cold Plate Microchannel Hydraulics
+    console.print("[bold yellow]5. Direct-to-Chip (D2C) Liquid Cold Plate Microchannel Hydraulics...[/bold yellow]")
+    cp_spec = ColdPlateSpec(
+        heat_load_w=1000.0,
+        channel_width_mm=0.2,
+        fin_thickness_mm=0.2,
+        fin_height_mm=3.0,
+        coolant_type="PG25",
+        flow_rate_lpm=1.5,
+    )
+    cp_rep = solve_cold_plate_hydraulics(cp_spec)
+    cp_path = out_dir / "cold_plate.json"
+    cp_path.write_text(json.dumps(cp_rep.model_dump(mode="json"), indent=2), encoding="utf-8")
+    console.print(
+        f"   [green][OK][/green] Heat HTC: {cp_rep.heat_transfer_coeff_w_m2k:.0f} W/m²K | "
+        f"dP: {cp_rep.total_pressure_drop_kpa:.2f} kPa | CHF Safety: {cp_rep.chf_safety_margin_ratio:.1f}x"
+    )
+
+    # 6. OCP ORV3 / OAM v2.0 Compliance Certification Dossier
+    console.print("[bold yellow]6. Open Compute Project (OCP) ORV3 & OAM v2.0 Compliance Engine...[/bold yellow]")
+    ocp_cert = evaluate_ocp_compliance(opt_spec, form_factor=OCPFormFactor.CUSTOM_HYPERSCALE)
+    ocp_path = out_dir / "ocp_certification.json"
+    ocp_path.write_text(json.dumps(ocp_cert.model_dump(mode="json"), indent=2), encoding="utf-8")
+    console.print(
+        f"   [green][OK][/green] Standard: {ocp_cert.target_form_factor.value} ({ocp_cert.rules_passed}/{ocp_cert.total_rules_evaluated} rules) | "
+        f"Status: [bold green]{ocp_cert.overall_compliance_status}[/bold green] | "
+        f"Dossier SHA-256: {ocp_cert.sha256_attestation[:16]}..."
+    )
+
+    # 7. Universal Open Standards Digital Twin Export
+    console.print("[bold yellow]7. Universal Open Standards Digital Twin Export...[/bold yellow]")
     usd_path = out_dir / "forge_twin.usda"
     usd_path.write_text(export_openusd_stage(opt_spec), encoding="utf-8")
     mo_path = out_dir / "forge_component.mo"
@@ -906,8 +952,8 @@ def demo(
     console.print(f"   [green][OK][/green] CalculiX 3D FEA Deck    : {inp_path}")
     console.print(f"   [green][OK][/green] FMI 2.0 Digital Twin FMU: {fmu_path}")
 
-    # 5. Cryptographic Hardware Passport
-    console.print("[bold yellow]5. Cryptographic SLSA Provenance Passport...[/bold yellow]")
+    # 8. Cryptographic SLSA Provenance Passport & BOM Costing
+    console.print("[bold yellow]8. Cryptographic SLSA Provenance Passport & BOM Costing...[/bold yellow]")
     passport = generate_hardware_provenance_passport(opt_spec)
     verified = verify_hardware_provenance(passport)
     pass_path = out_dir / "passport.json"
@@ -919,9 +965,7 @@ def demo(
         f"   [green][OK][/green] Unit Cost  : ${passport.total_estimated_unit_cost_usd:.2f} (Filament + Machine + Fasteners)"
     )
 
-    console.print(f"\n[bold green]All showcase deliverables compiled in {out_dir}/[/bold green]")
-
-    console.print(f"\n[bold green]All showcase deliverables compiled in {out_dir}/[/bold green]")
+    console.print(f"\n[bold green]All 8 showcase deliverables compiled successfully in {out_dir}/[/bold green]")
 
 
 @app.command()

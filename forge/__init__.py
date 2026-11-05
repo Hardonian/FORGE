@@ -4,7 +4,7 @@ from .core.models import DuctSpec, PhysicsConditions, PhysicsMetrics, DFMReport
 from .cad.mesh import build_duct_mesh
 from .physics.solver_1d import solve_duct_physics
 
-__version__ = "0.2.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "__version__",

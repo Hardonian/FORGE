@@ -160,7 +160,7 @@ def export_step(triangles: List[Triangle], name: str = "FORGE_DUCT") -> str:
         "ISO-10303-21;",
         "HEADER;",
         "FILE_DESCRIPTION(('FORGE Faceted B-Rep Solid Model'), '2;1');",
-        f"FILE_NAME('{name}.stp', '2026-11-02T20:00:00', ('FORGE Inverse Design'), ('AI Thermal'), 'FORGE v0.2.0', 'FORGE Kernel', '');",
+        f"FILE_NAME('{name}.stp', '2026-11-02T20:00:00', ('FORGE Inverse Design'), ('AI Thermal'), 'FORGE v1.0.0', 'FORGE Kernel', '');",
         "FILE_SCHEMA(('CONFIG_CONTROL_DESIGN'));",
         "ENDSEC;",
         "DATA;",
@@ -246,7 +246,7 @@ def export_gltf(triangles: List[Triangle], name: str = "forge_duct") -> str:
     b64_uri = "data:application/octet-stream;base64," + base64.b64encode(combined).decode("ascii")
 
     gltf_dict = {
-        "asset": {"version": "2.0", "generator": "FORGE CAD Engine v0.2.0"},
+        "asset": {"version": "2.0", "generator": "FORGE CAD Engine v1.0.0"},
         "scene": 0,
         "scenes": [{"nodes": [0]}],
         "nodes": [{"mesh": 0, "name": name}],
@@ -288,7 +288,7 @@ def export_glb(triangles: List[Triangle], name: str = "forge_duct") -> bytes:
     combined, pos_len, norm_len, vertex_count, min_pt, max_pt = _build_gltf_binary_payload(triangles)
 
     gltf_dict = {
-        "asset": {"version": "2.0", "generator": "FORGE CAD Engine v0.2.0"},
+        "asset": {"version": "2.0", "generator": "FORGE CAD Engine v1.0.0"},
         "scene": 0,
         "scenes": [{"nodes": [0]}],
         "nodes": [{"mesh": 0, "name": name}],

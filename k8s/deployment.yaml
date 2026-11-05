@@ -25,7 +25,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: forge-container
-          image: ghcr.io/example/forge:v0.2.0
+          image: ghcr.io/example/forge:v1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
