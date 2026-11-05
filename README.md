@@ -226,6 +226,19 @@ python -m forge interop --target calculix --spec examples/h100_datacenter_duct.j
 
 # Export FMI 2.0 Co-Simulation (.fmu) digital twin archive
 python -m forge interop --target fmu --spec examples/h100_datacenter_duct.json --out forge_twin.fmu
+
+# Export exact ISO-10303-21 STEP AP242 NURBS B-Spline CAD model
+python -m forge nurbs-step examples/h100_datacenter_duct.json --out forge_nurbs_ap242.stp
+```
+
+### 13. Two-Phase Hybrid Vapor-Chamber (AALC) Limits & Vectorized Batch Screening
+
+```bash
+# Evaluate capillary, boiling CHF, and entrainment limits for 600W-1200W accelerators
+python -m forge hybrid-aalc examples/h100_datacenter_duct.json --tdp 850 --fluid water --wick sintered_copper
+
+# Screen 1,000+ candidate designs in <3ms using vectorized PyTorch tensor SIMD
+python -m forge batch-screen --count 1000 --cfm 120
 ```
 
 ---

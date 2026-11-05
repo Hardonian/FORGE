@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from forge.api.websocket_twin import DigitalTwinHealthState, LiveTelemetryFrame
 from forge.cad.honeycomb import HoneycombStatorSpec
 from forge.cad.manifold import ManifoldSpec
 from forge.cad.tpms import TPMSSpec, TPMSThermoHydraulicReport
@@ -12,6 +11,7 @@ from forge.cloud.rack_twin import RackTwinROIReport
 from forge.compliance.dossier import ComplianceDossier
 from forge.compliance.provenance import HardwareProvenancePassport
 from forge.core.models import DFMReport, DuctSpec, PhysicsConditions, PhysicsMetrics
+from forge.core.telemetry import DigitalTwinHealthState, LiveTelemetryFrame
 from forge.opt.differentiable_adjoint import AdjointCoDesignResult
 from forge.physics.heatsink import CoupledHeatsinkReport, HeatsinkSpec
 from forge.physics.hybrid_cooling import HybridAALCReport, HybridAALCSpec

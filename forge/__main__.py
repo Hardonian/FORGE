@@ -25,16 +25,9 @@ def legacy_main(argv=None):
 
 def main(argv=None):
     args = argv if argv is not None else sys.argv[1:]
-    # If invoked with subcommands (or empty or help flag)
-    subcommands = {"generate", "simulate", "dfm", "openfoam", "su2", "optimize", "lab", "serve"}
-    if args and args[0] in subcommands:
-        return app(args)
-    elif args and ("--out" in args or len(args) == 2 or (len(args) > 0 and args[0].endswith(".json"))):
+    if args and args[0].endswith(".json"):
         return legacy_main(args)
-    elif not args:
-        return app([])
-    else:
-        return app(args)
+    return app(args)
 
 
 if __name__ == "__main__":

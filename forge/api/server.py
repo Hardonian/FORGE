@@ -51,7 +51,6 @@ from forge.compliance.dossier import (
 )
 from forge.interop.openusd import export_openusd_stage
 from forge.interop.modelica import export_modelica_component
-from forge.interop.mcp_server import get_openai_tool_schemas, handle_mcp_jsonrpc_request
 from forge.interop.open_schemas import export_all_json_schemas
 from forge.cad.tpms import (
     TPMSSpec,
@@ -434,12 +433,16 @@ def download_modelica(spec: DuctSpec, conditions: Optional[PhysicsConditions] = 
 @app.post("/api/v1/mcp")
 def mcp_jsonrpc_endpoint(request: Dict):
     """Model Context Protocol (MCP) JSON-RPC 2.0 server endpoint for AI agent tool discovery and invocation."""
+    from forge.interop.mcp_server import handle_mcp_jsonrpc_request
+
     return handle_mcp_jsonrpc_request(request)
 
 
 @app.get("/api/v1/tools/schema")
 def openai_tools_schema_endpoint():
     """Return OpenAI / Anthropic / Gemini function-calling tool schemas for FORGE."""
+    from forge.interop.mcp_server import get_openai_tool_schemas
+
     return {"tools": get_openai_tool_schemas()}
 
 

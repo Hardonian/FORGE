@@ -623,7 +623,7 @@ def hybrid_aalc(
     console.print(f"- Margin to Dryout:      [bold green]{rep.thermal_margin_to_dryout_pct:.1f}%[/bold green]")
     hotspot_color = "red" if rep.throttling_triggered else "green"
     console.print(
-        f"- Hotspot Junction Temp: [bold {hotspot_color}]{rep.hotspot_junction_temp_c:.1f} C[/bold] "
+        f"- Hotspot Junction Temp: [{hotspot_color}]{rep.hotspot_junction_temp_c:.1f} C[/{hotspot_color}] "
         f"(Margin: {rep.junction_margin_c:.1f} C)"
     )
     console.print(

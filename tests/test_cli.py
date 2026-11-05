@@ -62,6 +62,28 @@ class CliTests(unittest.TestCase):
             self.assertEqual(res.exit_code, 0)
             self.assertTrue(out.exists())
 
+    def test_nurbs_step_and_hybrid_aalc_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out_stp = Path(tmp) / "nurbs.stp"
+            res_nurbs = self.runner.invoke(app, ["nurbs-step", str(self.spec_json), "--out", str(out_stp)])
+            self.assertEqual(res_nurbs.exit_code, 0)
+            self.assertTrue(out_stp.exists())
+            self.assertIn("AP242", out_stp.read_text(encoding="utf-8"))
+
+            out_aalc = Path(tmp) / "aalc_report.json"
+            res_aalc = self.runner.invoke(
+                app,
+                ["hybrid-aalc", str(self.spec_json), "--tdp", "800", "--fluid", "water", "--out", str(out_aalc)],
+            )
+            self.assertEqual(res_aalc.exit_code, 0)
+            self.assertTrue(out_aalc.exists())
+            self.assertIn("Capillary Limit", res_aalc.output)
+
+    def test_batch_screen_command(self):
+        res = self.runner.invoke(app, ["batch-screen", "--count", "50", "--cfm", "100"])
+        self.assertEqual(res.exit_code, 0)
+        self.assertIn("Vectorized Tensor Batch Evaluation Complete", res.output)
+
 
 if __name__ == "__main__":
     unittest.main()
