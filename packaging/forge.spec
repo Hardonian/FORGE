@@ -7,7 +7,9 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
-repo_root = Path.cwd().resolve()
+repo_root = Path(SPECPATH).resolve().parent if "SPECPATH" in globals() else Path.cwd().resolve()
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 forge_dir = repo_root / "forge"
 
 # Collect all submodules across forge and third-party packages
