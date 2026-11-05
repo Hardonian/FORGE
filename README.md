@@ -86,7 +86,7 @@ forge/
 ├── cloud/        # Multi-tenant SaaS entitlements and 42U datacenter rack IPMI digital twin ROI
 ├── lab/          # Test bench telemetry ingestion, Sim2Real discrepancy, 2D roughness calibration
 ├── surrogate/    # PyTorch residual MLP + 2D/3D Fourier Neural Operator (FNO) spatial flow fields
-├── cli/          # Typer command-line interface (21 subcommands)
+├── cli/          # Typer command-line interface (24 subcommands)
 ├── api/          # FastAPI server and Flagship Three.js 3D Web Studio 2.0
 └── duct.py       # Backward-compatible transition duct interface
 ```

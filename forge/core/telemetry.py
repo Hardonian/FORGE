@@ -32,3 +32,4 @@ class DigitalTwinHealthState(BaseModel):
     filter_service_recommended: bool
     health_score_pct: float
     alerts: List[str] = Field(default_factory=list)
+
