@@ -243,6 +243,52 @@ python -m forge batch-screen --count 1000 --cfm 120
 
 ---
 
+## Cloud Deployment & Containerization
+
+FORGE provides hardened, production-ready multi-stage Docker containers and Kubernetes manifests for enterprise cloud clusters:
+
+### 1. Docker Compose (Studio + API)
+
+```bash
+# Build and run the production Web Studio & REST API container
+docker compose up -d
+
+# Verify container health check
+docker compose ps
+
+# Run batch worker demo container
+docker compose --profile worker run forge-worker
+```
+
+### 2. Kubernetes Cluster Deployment
+
+```bash
+# Apply deployment, service, horizontal pod autoscaler, and WebSocket ingress
+kubectl apply -f k8s/
+
+# Verify multi-pod deployment and health status
+kubectl get pods -l app=forge-platform
+kubectl get svc forge-api-service
+kubectl get hpa forge-api-hpa
+```
+
+---
+
+## Standalone Binary Packaging (Zero Python Dependencies)
+
+Compile self-contained, standalone executables for air-gapped workstations or deployment targets without a Python runtime:
+
+```bash
+# Build standalone binary distribution package for host OS
+python scripts/build_standalone_binary.py
+
+# Run compiled executable directly (Windows / Linux / macOS)
+./dist/forge/forge --version
+./dist/forge/forge demo --out runs/standalone_demo
+```
+
+---
+
 ## Legacy Backward Compatibility
 
 The original script invocation continues to work seamlessly:
