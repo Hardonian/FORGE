@@ -1,14 +1,24 @@
 """PyTorch Physics-Informed Residual Neural Surrogate with MC-Dropout Uncertainty."""
 from __future__ import annotations
-from typing import Dict, List
-import torch
-import torch.nn as nn
+from typing import Any, Dict, List
+
+try:
+    import torch
+    import torch.nn as nn
+    _ModuleBase: Any = nn.Module
+except ImportError:
+    torch = None  # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
+    _ModuleBase = object
+
 from forge.core.models import DuctSpec, PhysicsConditions
 from forge.physics.solver_1d import solve_duct_physics
 
 
-def extract_feature_tensor(spec: DuctSpec, conditions: PhysicsConditions) -> torch.Tensor:
+def extract_feature_tensor(spec: DuctSpec, conditions: PhysicsConditions) -> Any:
     """Convert DuctSpec and PhysicsConditions into a normalized 10D feature tensor."""
+    if torch is None:
+        raise RuntimeError("PyTorch is required for neural surrogate modeling. Please install torch.")
     return torch.tensor([
         spec.length / 100.0,
         spec.inlet_width / 100.0,
@@ -23,7 +33,7 @@ def extract_feature_tensor(spec: DuctSpec, conditions: PhysicsConditions) -> tor
     ], dtype=torch.float32)
 
 
-class DuctFlowSurrogate(nn.Module):
+class DuctFlowSurrogate(_ModuleBase):
     """Physics-Informed Residual Neural Operator surrogate for duct pressure drop, uniformity, and exit velocity."""
     def __init__(self, input_dim: int = 10, hidden_dim: int = 64, output_dim: int = 3, dropout_p: float = 0.1):
         super().__init__()

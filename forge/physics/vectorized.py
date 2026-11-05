@@ -9,9 +9,12 @@ sampling, and neural active learning loops.
 from __future__ import annotations
 
 import math
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
-import torch
+try:
+    import torch
+except ImportError:
+    torch = None  # type: ignore[assignment]
 
 from forge.core.models import DuctSpec, PhysicsConditions
 
@@ -19,16 +22,16 @@ from forge.core.models import DuctSpec, PhysicsConditions
 class BatchPhysicsResult(NamedTuple):
     """Batched tensor output for B candidate duct designs."""
 
-    total_pressure_drop_pa: torch.Tensor  # Shape (B,)
-    velocity_uniformity_index: torch.Tensor  # Shape (B,)
-    reynolds_number: torch.Tensor  # Shape (B,)
-    estimated_mass_grams: torch.Tensor  # Shape (B,)
+    total_pressure_drop_pa: Any  # Shape (B,)
+    velocity_uniformity_index: Any  # Shape (B,)
+    reynolds_number: Any  # Shape (B,)
+    estimated_mass_grams: Any  # Shape (B,)
 
 
 def evaluate_duct_specs_tensor_batch(
-    specs: list[DuctSpec] | torch.Tensor,
+    specs: list[DuctSpec] | Any,
     conditions: PhysicsConditions | None = None,
-    device: str | torch.device = "cpu",
+    device: str | Any = "cpu",
     material_density_g_cm3: float = 1.20,
 ) -> BatchPhysicsResult:
     """Evaluate an arbitrary batch of duct specifications in parallel via vectorized PyTorch tensors.
@@ -41,6 +44,11 @@ def evaluate_duct_specs_tensor_batch(
     device : str or torch.device, default "cpu"
     material_density_g_cm3 : float, default 1.20 (PC-CF)
     """
+    if torch is None:
+        raise RuntimeError(
+            "PyTorch is required for vectorized tensor batch evaluation. "
+            "Please install torch or run via the FORGE Docker container."
+        )
     cond = conditions or PhysicsConditions()
 
     if isinstance(specs, list):

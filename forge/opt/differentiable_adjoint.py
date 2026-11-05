@@ -62,6 +62,11 @@ def run_differentiable_adjoint_codesign(
     learning_rate: float = 0.12,
 ) -> AdjointCoDesignResult:
     """Co-optimize duct loft profile, corner fillet, and heatsink fin density via PyTorch autograd."""
+    if torch is None:
+        raise RuntimeError(
+            "PyTorch is required for differentiable adjoint co-design optimization. "
+            "Please install torch or run via the FORGE Docker container."
+        )
     cond = conditions or PhysicsConditions()
     if heatsink is None:
         heatsink = HeatsinkSpec(

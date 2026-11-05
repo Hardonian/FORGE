@@ -1,10 +1,18 @@
 """Fourier Neural Operator (FNO) spatial velocity and pressure field surrogate model."""
 from __future__ import annotations
 import math
-from typing import List
+from typing import Any, List
 from pydantic import BaseModel
-import torch
-import torch.nn as nn
+
+try:
+    import torch
+    import torch.nn as nn
+    _ModuleBase: Any = nn.Module
+except ImportError:
+    torch = None  # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
+    _ModuleBase = object
+
 from forge.core.models import DuctSpec, PhysicsConditions
 from forge.cad.mesh import compute_normal_wall_compensation, evaluate_bezier_scalar
 from forge.physics.solver_1d import solve_duct_physics
@@ -24,7 +32,7 @@ class SpatialFlowFieldPrediction(BaseModel):
     max_separation_risk: float
 
 
-class SpectralConv2d(nn.Module):
+class SpectralConv2d(_ModuleBase):
     """2D Fourier Layer: performs FFT2 -> linear transform on low-frequency Fourier modes -> iFFT2."""
 
     def __init__(self, in_channels: int, out_channels: int, modes_z: int = 4, modes_x: int = 4) -> None:
@@ -55,7 +63,7 @@ class SpectralConv2d(nn.Module):
         return torch.fft.irfft2(out_ft, s=(size_z, size_x))
 
 
-class FNOFlowFieldSurrogate(nn.Module):
+class FNOFlowFieldSurrogate(_ModuleBase):
     """Physics-Informed Fourier Neural Operator predicting full 2D/3D spatial velocity and pressure fields."""
 
     def __init__(self, width: int = 12, modes_z: int = 4, modes_x: int = 4) -> None:
@@ -185,14 +193,19 @@ def predict_flow_field(
         p_prior.append(p_row)
         sep_prior.append(s_row)
 
-    # Apply FNO spectral residual operator
-    fno = _get_fno_model()
-    with torch.no_grad():
-        feat = torch.tensor([u_prior, p_prior, sep_prior, z_grid], dtype=torch.float32).unsqueeze(0)
-        res = fno(feat).squeeze(0)
-        u_final = (feat[0, 0] + res[0]).clamp(min=0.1).tolist()
-        p_final = (feat[0, 1] + res[1]).tolist()
-        s_final = (feat[0, 2] + res[2]).clamp(min=0.0, max=1.0).tolist()
+    # Apply FNO spectral residual operator if PyTorch is available, otherwise Navier-Stokes prior
+    if torch is not None:
+        fno = _get_fno_model()
+        with torch.no_grad():
+            feat = torch.tensor([u_prior, p_prior, sep_prior, z_grid], dtype=torch.float32).unsqueeze(0)
+            res = fno(feat).squeeze(0)
+            u_final = (feat[0, 0] + res[0]).clamp(min=0.1).tolist()
+            p_final = (feat[0, 1] + res[1]).tolist()
+            s_final = (feat[0, 2] + res[2]).clamp(min=0.0, max=1.0).tolist()
+    else:
+        u_final = u_prior
+        p_final = p_prior
+        s_final = sep_prior
 
     u_clean = [[round(float(v), 2) for v in row] for row in u_final]
     p_clean = [[round(float(v), 2) for v in row] for row in p_final]
