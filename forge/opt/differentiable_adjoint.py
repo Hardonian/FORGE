@@ -13,9 +13,14 @@ adjoint sensitivities and co-optimize the duct loft and heatsink simultaneously.
 from __future__ import annotations
 
 import math
+from typing import Any
 
 from pydantic import BaseModel, Field
-import torch
+
+try:
+    import torch
+except ImportError:
+    torch = None  # type: ignore[assignment]
 
 from forge.core.models import DuctSpec, PhysicsConditions
 from forge.physics.heatsink import (
