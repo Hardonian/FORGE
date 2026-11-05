@@ -27,7 +27,7 @@ from forge.physics.solver_1d import solve_duct_physics
 class OCPFormFactor(str, Enum):
     ORV3_1OU = "ocp_orv3_1ou"  # 1 OpenU (48.0 mm pitch, max 44.0 mm component height)
     ORV3_2OU = "ocp_orv3_2ou"  # 2 OpenU (96.0 mm pitch, max 88.0 mm component height)
-    OAM_V2 = "ocp_oam_v2"      # Open Accelerator Module v2.0 (102 x 165 mm mezzanine)
+    OAM_V2 = "ocp_oam_v2"  # Open Accelerator Module v2.0 (102 x 165 mm mezzanine)
     CUSTOM_HYPERSCALE = "custom_hyperscale"
 
 
@@ -75,9 +75,8 @@ def evaluate_ocp_compliance(
     rules: List[OCPRuleResult] = []
 
     # 1. Height Envelope Check
-    max_height_mm = max(duct_spec.inlet_height, duct_spec.outlet_height) + (
-        duct_spec.flange_width * 2.0 if duct_spec.inlet_flange or duct_spec.outlet_flange else 0.0
-    )
+    flange_ext = 6.0 if duct_spec.flange_thickness > 0.0 else 0.0
+    max_height_mm = max(duct_spec.inlet_height, duct_spec.outlet_height) + (2.0 * flange_ext) + abs(duct_spec.offset_y)
     if form_factor == OCPFormFactor.ORV3_1OU:
         limit_h = 44.0
         ref = "OCP-ORV3-MECH-3.1 (1OU Maximum Envelope)"
@@ -104,9 +103,7 @@ def evaluate_ocp_compliance(
     )
 
     # 2. Width / Footprint Envelope Check
-    max_width_mm = max(duct_spec.inlet_width, duct_spec.outlet_width) + (
-        duct_spec.flange_width * 2.0 if duct_spec.inlet_flange or duct_spec.outlet_flange else 0.0
-    )
+    max_width_mm = max(duct_spec.inlet_width, duct_spec.outlet_width) + (2.0 * flange_ext) + abs(duct_spec.offset_x)
     if form_factor == OCPFormFactor.OAM_V2:
         limit_w = 102.5
         ref_w = "OCP-OAM-v2.0-SPEC-Sec4.1 (Mezzanine Width)"

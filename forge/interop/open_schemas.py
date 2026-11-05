@@ -9,10 +9,15 @@ from forge.cad.manifold import ManifoldSpec
 from forge.cad.tpms import TPMSSpec, TPMSThermoHydraulicReport
 from forge.cloud.rack_twin import RackTwinROIReport
 from forge.compliance.dossier import ComplianceDossier
+from forge.compliance.ocp_standards import OCPComplianceReport
 from forge.compliance.provenance import HardwareProvenancePassport
 from forge.core.models import DFMReport, DuctSpec, PhysicsConditions, PhysicsMetrics
 from forge.core.telemetry import DigitalTwinHealthState, LiveTelemetryFrame
+from forge.lab.bayesian_mcmc import BayesianCalibrationReport
 from forge.opt.differentiable_adjoint import AdjointCoDesignResult
+from forge.physics.cold_plate import ColdPlateHydraulicResult, ColdPlateSpec
+from forge.physics.cowos_multidie import CoWoSPackageSpec, MultiZoneCoWoSReport
+from forge.physics.fan_redundancy import FanBankSpec, FanRedundancyReport
 from forge.physics.heatsink import CoupledHeatsinkReport, HeatsinkSpec
 from forge.physics.hybrid_cooling import HybridAALCReport, HybridAALCSpec
 from forge.physics.structural_modal import ModalResonanceReport
@@ -20,7 +25,7 @@ from forge.physics.transient_thermal import TransientThermalReport
 
 
 def export_all_json_schemas() -> Dict[str, Any]:
-    """Export Draft 2020-12 JSON Schemas for all 20 primary FORGE domain models for cross-language interoperability."""
+    """Export Draft 2020-12 JSON Schemas for all primary FORGE domain models for cross-language interoperability."""
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "platform": "FORGE",
@@ -45,5 +50,13 @@ def export_all_json_schemas() -> Dict[str, Any]:
             "HybridAALCReport": HybridAALCReport.model_json_schema(),
             "LiveTelemetryFrame": LiveTelemetryFrame.model_json_schema(),
             "DigitalTwinHealthState": DigitalTwinHealthState.model_json_schema(),
+            "FanBankSpec": FanBankSpec.model_json_schema(),
+            "FanRedundancyReport": FanRedundancyReport.model_json_schema(),
+            "CoWoSPackageSpec": CoWoSPackageSpec.model_json_schema(),
+            "MultiZoneCoWoSReport": MultiZoneCoWoSReport.model_json_schema(),
+            "ColdPlateSpec": ColdPlateSpec.model_json_schema(),
+            "ColdPlateHydraulicResult": ColdPlateHydraulicResult.model_json_schema(),
+            "OCPComplianceReport": OCPComplianceReport.model_json_schema(),
+            "BayesianCalibrationReport": BayesianCalibrationReport.model_json_schema(),
         },
     }

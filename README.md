@@ -241,6 +241,25 @@ python -m forge hybrid-aalc examples/h100_datacenter_duct.json --tdp 850 --fluid
 python -m forge batch-screen --count 1000 --cfm 120
 ```
 
+### 14. Hyperscale AI Datacenter Infrastructure & OCP Compliance
+
+```bash
+# Analyze counter-rotating dual fan pairs, N+1 failure backflow leakage, and failover RPM
+python -m forge fan-redundancy --fans 5 --failed 1 --duty 75 --target-cfm 300
+
+# Evaluate multi-die CoWoS package (GPU + HBM3e + VRMs) with upstream air preheat cascade
+python -m forge cowos --cfm 140 --ambient 35
+
+# Evaluate skived microchannel liquid cold plate hydraulics, UQD pressure drops, and CHF margin
+python -m forge cold-plate --coolant pg25 --lpm 3.5 --watts 1000
+
+# Verify formal compliance against Open Compute Project (OCP) ORV3 and OAM v2.0 standards
+python -m forge ocp-check --form-factor ocp_oam_v2
+
+# Execute Bayesian Sim2Real MCMC inverse parameter estimation for wall roughness, TIM, and fan factor
+python -m forge bayesian-cal --iterations 1000
+```
+
 ---
 
 ## Cloud Deployment & Containerization

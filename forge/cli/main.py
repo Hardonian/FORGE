@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+from typing import Optional
 
 # Ensure stdout handles UTF-8 on Windows
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
@@ -72,6 +73,11 @@ from forge.compliance.provenance import (
     generate_hardware_provenance_passport,
     verify_hardware_provenance,
 )
+from forge.physics.fan_redundancy import FanBankSpec, evaluate_fan_bank_redundancy
+from forge.physics.cowos_multidie import CoWoSPackageSpec, solve_cowos_multidie_thermal_network
+from forge.physics.cold_plate import ColdPlateSpec, solve_cold_plate_hydraulics
+from forge.compliance.ocp_standards import OCPFormFactor, evaluate_ocp_compliance
+from forge.lab.bayesian_mcmc import run_bayesian_mcmc_calibration
 
 app = typer.Typer(
     name="forge",
@@ -678,6 +684,159 @@ def batch_screen(
     )
     console.print(f"- Mean Flow Uniformity: [green]{float(res.velocity_uniformity_index.mean()):.4f}[/green]")
     console.print(f"- Mean Shell Mass:      [green]{float(res.estimated_mass_grams.mean()):.1f} g[/green]")
+
+
+@app.command("fan-redundancy")
+def fan_redundancy_command(
+    fans: int = typer.Option(5, "--fans", "-n", help="Total installed fan bays"),
+    failed: int = typer.Option(1, "--failed", "-f", help="Number of dead fan units"),
+    duty: float = typer.Option(75.0, "--duty", "-d", help="Nominal fan duty cycle %"),
+    target_cfm: float = typer.Option(320.0, "--target-cfm", help="Target net airflow CFM"),
+    out: Optional[Path] = typer.Option(None, "--out", "-o", help="Path to save JSON report"),
+):
+    """Analyze dual counter-rotating fan staging, N+1 backflow leakage, and emergency failover RPM."""
+    bank_spec = FanBankSpec(
+        total_fans=fans,
+        failed_fans=failed,
+        duty_cycle_pct=duty,
+        target_cooling_cfm=target_cfm,
+    )
+    rep = evaluate_fan_bank_redundancy(bank_spec)
+    console.print(f"[bold cyan]Chassis Multi-Fan Redundancy Report ({fans}-Bay System)[/bold cyan]")
+    console.print(f"- Staged Dual Fan Multiplier: [bold green]{rep.staged_dual_fan_pressure_multiplier}x[/bold green]")
+    console.print(f"- Healthy State Net Flow   : [green]{rep.healthy_state.net_heatsink_cfm} CFM[/green] at {rep.healthy_state.fan_duty_pct}% PWM")
+    console.print(f"- Failed State Net Flow    : [yellow]{rep.failed_state_uncompensated.net_heatsink_cfm} CFM[/yellow] (Leakage: {rep.failed_state_uncompensated.reverse_backflow_cfm} CFM, {rep.failed_state_uncompensated.backflow_leakage_pct}%)")
+    console.print(f"- Emergency Failover Duty  : [bold red]{rep.failover_compensation.emergency_duty_pct}% PWM[/bold red] ({rep.failover_compensation.emergency_rpm:.0f} RPM)")
+    console.print(f"- Failover Acoustic Spike  : [red]+{rep.failover_compensation.acoustic_penalty_dba} dBA[/red], Power: +{rep.failover_compensation.power_spike_w} W")
+    console.print(f"- Target Flow Achievable   : [bold]{'YES [OK]' if rep.failover_compensation.is_target_achievable else 'NO [DEFICIT]'}[/bold]")
+    if out:
+        out.write_text(json.dumps(rep.model_dump(), indent=2) + "\n", encoding="utf-8")
+        console.print(f"[bold green][OK][/bold green] Report saved to [cyan]{out}[/cyan]")
+
+
+@app.command("cowos")
+def cowos_command(
+    cfm: float = typer.Option(140.0, "--cfm", help="Cooling airflow in CFM"),
+    ambient: float = typer.Option(35.0, "--ambient", help="Ambient air temperature in C"),
+    out: Optional[Path] = typer.Option(None, "--out", "-o", help="Path to save JSON report"),
+):
+    """Solve heterogeneous multi-die CoWoS package (GPU, HBM3e, VRMs) thermal network."""
+    pkg = CoWoSPackageSpec()
+    rep = solve_cowos_multidie_thermal_network(pkg, airflow_cfm=cfm, ambient_temp_c=ambient)
+    console.print(f"[bold cyan]CoWoS Multi-Die Thermal Assessment ({pkg.package_name})[/bold cyan]")
+    console.print(f"- Total Package Power      : [bold yellow]{rep.total_package_power_w} W[/bold yellow]")
+    console.print(f"- Bulk Air Exit Temp       : [green]{rep.bulk_air_exit_temp_c} C[/green] (Rise: +{rep.air_temp_rise_c} C)")
+    console.print(f"- Critical Bottleneck      : [bold red]{rep.critical_bottleneck_component}[/bold red] (Margin: {rep.critical_thermal_margin_c} C)")
+    console.print(f"- Package Throttling Status: [bold]{'THROTTLED [FAIL]' if rep.is_package_throttled else 'SAFE [PASS]'}[/bold]")
+    table = Table(title="CoWoS Silicon Component Temperatures")
+    table.add_column("Die Name")
+    table.add_column("Power (W)", justify="right")
+    table.add_column("T_in Air (C)", justify="right")
+    table.add_column("T_j (C)", justify="right")
+    table.add_column("T_max (C)", justify="right")
+    table.add_column("Margin (C)", justify="right")
+    for c in rep.components:
+        color = "red" if c.is_throttling else "green"
+        table.add_row(c.name, f"{c.power_w:.1f}", f"{c.local_air_inlet_temp_c:.1f}", f"[{color}]{c.junction_temp_c:.1f}[/{color}]", f"{c.max_junction_temp_c:.1f}", f"[{color}]{c.thermal_margin_c:+.1f}[/{color}]")
+    console.print(table)
+    if out:
+        out.write_text(json.dumps(rep.model_dump(), indent=2) + "\n", encoding="utf-8")
+        console.print(f"[bold green][OK][/bold green] Report saved to [cyan]{out}[/cyan]")
+
+
+@app.command("cold-plate")
+def cold_plate_command(
+    coolant: str = typer.Option("pg25", "--coolant", help="Coolant fluid: water, pg25, pg50, dielectric"),
+    lpm: float = typer.Option(3.5, "--lpm", help="Flow rate in Liters/minute"),
+    watts: float = typer.Option(1000.0, "--watts", help="Heat load dissipation in Watts"),
+    out: Optional[Path] = typer.Option(None, "--out", "-o", help="Path to save JSON report"),
+):
+    """Evaluate skived microchannel liquid cold plate hydraulics, UQD pressure drops, and CHF margin."""
+    cp_spec = ColdPlateSpec(
+        coolant=coolant,
+        flow_rate_lpm=lpm,
+        heat_load_w=watts,
+    )
+    rep = solve_cold_plate_hydraulics(cp_spec)
+    console.print(f"[bold cyan]Direct-to-Chip (D2C) Liquid Cold Plate Evaluation ({coolant.upper()})[/bold cyan]")
+    console.print(f"- Active Channels          : [green]{rep.number_of_channels}[/green] (Width: {cp_spec.channel_width_mm}mm, Height: {cp_spec.channel_height_mm}mm, AR: {rep.channel_aspect_ratio})")
+    console.print(f"- Channel Reynolds Number  : [green]{rep.reynolds_number:.0f}[/green] ({rep.flow_regime})")
+    console.print(f"- Convective Heat Transfer : [bold green]{rep.heat_transfer_coeff_w_m2k:.0f} W/m^2K[/bold green] (Fin Eff: {rep.fin_efficiency_pct}%)")
+    console.print(f"- Max Cold Plate Base Temp : [bold green]{rep.max_cold_plate_base_temp_c:.1f} C[/bold green] at {lpm} LPM")
+    console.print(f"- Total Loop Pressure Drop : [yellow]{rep.total_pressure_drop_kpa:.1f} kPa[/yellow] ({rep.total_pressure_drop_psi:.2f} psi)")
+    console.print(f"- Heat Flux & CHF Margin   : [bold]{rep.heat_flux_w_cm2:.1f} W/cm^2[/bold] (Safety Margin: [bold green]{rep.chf_safety_margin_ratio}x[/bold green])")
+    if out:
+        out.write_text(json.dumps(rep.model_dump(), indent=2) + "\n", encoding="utf-8")
+        console.print(f"[bold green][OK][/bold green] Report saved to [cyan]{out}[/cyan]")
+
+
+@app.command("ocp-check")
+def ocp_check_command(
+    spec_path: Optional[Path] = typer.Option(None, "--spec", "-s", help="Path to input DuctSpec JSON"),
+    form_factor: str = typer.Option("ocp_oam_v2", "--form-factor", "-f", help="OCP form factor: ocp_orv3_1ou, ocp_orv3_2ou, ocp_oam_v2"),
+    out: Optional[Path] = typer.Option(None, "--out", "-o", help="Path to save JSON report"),
+):
+    """Verify formal compliance against Open Compute Project (OCP) ORV3 and OAM v2.0 standards."""
+    spec = DuctSpec(
+        inlet_width=80.0,
+        inlet_height=80.0,
+        outlet_width=100.0,
+        outlet_height=42.0,
+        length=140.0,
+        wall=2.0,
+    )
+    if spec_path and spec_path.exists():
+        spec = DuctSpec.model_validate_json(spec_path.read_text(encoding="utf-8"))
+    rep = evaluate_ocp_compliance(spec, form_factor=OCPFormFactor(form_factor))
+    status_color = "bold green" if rep.overall_compliance_status == "CERTIFIED_COMPLIANT" else "bold red"
+    console.print(f"[bold cyan]OCP Hardware Compliance Certification Dossier ({form_factor.upper()})[/bold cyan]")
+    console.print(f"- Certificate ID           : [cyan]{rep.certificate_id}[/cyan]")
+    console.print(f"- Overall Status           : [{status_color}]{rep.overall_compliance_status}[/{status_color}] ({rep.compliance_score_pct}%)")
+    console.print(f"- Rules Evaluated          : [green]{rep.rules_passed}/{rep.total_rules_evaluated} Passed[/green]")
+    table = Table(title="OCP Specification Rules Compliance")
+    table.add_column("Rule ID")
+    table.add_column("Rule Name")
+    table.add_column("Required Criterion")
+    table.add_column("Measured Value")
+    table.add_column("Margin")
+    table.add_column("Status")
+    for r in rep.rules:
+        r_color = "green" if r.passed else "red"
+        table.add_row(r.rule_id, r.rule_name, r.required_criterion, r.measured_value, f"{r.margin_of_safety_pct:+.1f}%", f"[{r_color}]{'PASS' if r.passed else 'FAIL'}[/{r_color}]")
+    console.print(table)
+    if out:
+        out.write_text(json.dumps(rep.model_dump(), indent=2) + "\n", encoding="utf-8")
+        console.print(f"[bold green][OK][/bold green] Report saved to [cyan]{out}[/cyan]")
+
+
+@app.command("bayesian-cal")
+def bayesian_cal_command(
+    spec_path: Optional[Path] = typer.Option(None, "--spec", "-s", help="Path to input DuctSpec JSON"),
+    iterations: int = typer.Option(1000, "--iterations", "-i", help="MCMC chain iterations"),
+    out: Optional[Path] = typer.Option(None, "--out", "-o", help="Path to save JSON report"),
+):
+    """Execute Bayesian MCMC inverse parameter estimation for wall roughness, TIM resistance, and fan factor."""
+    spec = DuctSpec(
+        inlet_width=80.0,
+        inlet_height=80.0,
+        outlet_width=100.0,
+        outlet_height=42.0,
+        length=140.0,
+        wall=2.0,
+    )
+    if spec_path and spec_path.exists():
+        spec = DuctSpec.model_validate_json(spec_path.read_text(encoding="utf-8"))
+    rep = run_bayesian_mcmc_calibration(spec, iterations=iterations, burn_in=iterations // 3)
+    console.print("[bold cyan]Bayesian Sim2Real MCMC Parameter Estimation[/bold cyan]")
+    console.print(f"- Total Iterations         : [green]{rep.total_mcmc_iterations}[/green] (Burn-in: {rep.burn_in_iterations})")
+    console.print(f"- MCMC Acceptance Rate     : [green]{rep.acceptance_rate_pct}%[/green] (Optimal: 23-45%)")
+    console.print(f"- Pressure Drop RMSE       : [green]{rep.pre_calibration_rmse_pa} Pa -> {rep.post_calibration_rmse_pa} Pa[/green]")
+    console.print(f"- Temperature RMSE         : [green]{rep.pre_calibration_rmse_c} C -> {rep.post_calibration_rmse_c} C[/green]")
+    for _, p_post in rep.parameters.items():
+        console.print(f"- [bold]{p_post.name}[/bold]: [bold green]{p_post.posterior_mean} +/- {p_post.posterior_std} {p_post.unit}[/bold green] (95% CI: [{p_post.ci_95_lower}, {p_post.ci_95_upper}])")
+    if out:
+        out.write_text(json.dumps(rep.model_dump(), indent=2) + "\n", encoding="utf-8")
+        console.print(f"[bold green][OK][/bold green] Report saved to [cyan]{out}[/cyan]")
 
 
 @app.command()

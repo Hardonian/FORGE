@@ -64,6 +64,11 @@ from forge.compliance.provenance import (
     generate_hardware_provenance_passport,
     verify_hardware_provenance,
 )
+from forge.physics.fan_redundancy import FanBankSpec, evaluate_fan_bank_redundancy
+from forge.physics.cowos_multidie import CoWoSPackageSpec, solve_cowos_multidie_thermal_network
+from forge.physics.cold_plate import ColdPlateSpec, solve_cold_plate_hydraulics
+from forge.compliance.ocp_standards import OCPFormFactor, evaluate_ocp_compliance
+from forge.lab.bayesian_mcmc import LabTelemetryPoint, run_bayesian_mcmc_calibration
 import tempfile
 from pathlib import Path
 
@@ -560,6 +565,62 @@ def batch_evaluate_endpoint(
         "reynolds_number": [round(float(v), 1) for v in batch_res.reynolds_number],
         "estimated_mass_grams": [round(float(v), 1) for v in batch_res.estimated_mass_grams],
     }
+
+
+@app.post("/api/v1/physics/fan-redundancy")
+def fan_redundancy_endpoint(spec: FanBankSpec):
+    """Analyze dual counter-rotating fan staging, N+1 backflow leakage, and emergency failover RPM."""
+    rep = evaluate_fan_bank_redundancy(spec)
+    return rep.model_dump()
+
+
+@app.post("/api/v1/physics/cowos-multidie")
+def cowos_multidie_endpoint(
+    spec: CoWoSPackageSpec,
+    airflow_cfm: float = 140.0,
+    ambient_temp_c: float = 35.0,
+):
+    """Solve multi-die CoWoS thermal network (GPU, HBM3e, VRMs) with upstream air preheat cascade."""
+    rep = solve_cowos_multidie_thermal_network(spec, airflow_cfm=airflow_cfm, ambient_temp_c=ambient_temp_c)
+    return rep.model_dump()
+
+
+@app.post("/api/v1/physics/cold-plate")
+def cold_plate_endpoint(spec: ColdPlateSpec):
+    """Evaluate skived microchannel liquid cold plate hydraulics, UQD pressure drops, and CHF margin."""
+    rep = solve_cold_plate_hydraulics(spec)
+    return rep.model_dump()
+
+
+@app.post("/api/v1/compliance/ocp-check")
+def ocp_compliance_endpoint(
+    spec: DuctSpec,
+    conditions: Optional[PhysicsConditions] = None,
+    form_factor: OCPFormFactor = OCPFormFactor.OAM_V2,
+    assembly_mass_kg: float = 1.25,
+    thermal_power_w: float = 750.0,
+):
+    """Verify formal compliance against Open Compute Project (OCP) ORV3 and OAM v2.0 standards."""
+    rep = evaluate_ocp_compliance(
+        spec,
+        conditions=conditions,
+        form_factor=form_factor,
+        total_assembly_mass_kg=assembly_mass_kg,
+        thermal_power_w=thermal_power_w,
+    )
+    return rep.model_dump()
+
+
+@app.post("/api/v1/lab/bayesian-calibration")
+def bayesian_calibration_endpoint(
+    spec: DuctSpec,
+    telemetry: Optional[List[LabTelemetryPoint]] = None,
+    iterations: int = 1000,
+    burn_in: int = 250,
+):
+    """Execute Bayesian MCMC inverse parameter estimation for wall roughness, TIM resistance, and fan factor."""
+    rep = run_bayesian_mcmc_calibration(spec, telemetry=telemetry, iterations=iterations, burn_in=burn_in)
+    return rep.model_dump()
 
 
 @app.websocket("/ws/telemetry/{chassis_id}")

@@ -128,7 +128,7 @@ def solve_fan_pressure_at_flow(
     """
     rpm_ratio = max(0.1, min(1.2, duty_pct / 100.0))
     q_max = fan.free_air_cfm * rpm_ratio
-    p_shutoff = fan.shutoff_pressure_pa * (rpm_ratio ** 2)
+    p_shutoff = fan.shutoff_pressure_pa * (rpm_ratio**2)
 
     if flow_cfm <= 0.0:
         p_base = p_shutoff
@@ -146,7 +146,7 @@ def solve_fan_pressure_at_flow(
         q_m3_s = max(0.001, flow_cfm * 0.000471947443)
         v_axial = q_m3_s / max(1e-5, fan_area_m2)
         c_theta = 0.42 * v_axial
-        swirl_dyn_head = 0.5 * air_density_kg_m3 * (c_theta ** 2)
+        swirl_dyn_head = 0.5 * air_density_kg_m3 * (c_theta**2)
         swirl_rec_pa = fan.swirl_recovery_efficiency * swirl_dyn_head
         # Counter-rotating dual rotor doubles base pressure plus recovers swirl
         total_p = 2.05 * p_base + swirl_rec_pa
@@ -208,7 +208,7 @@ def solve_chassis_operating_point(
         damper_dp = 0.0
         if bank.damper.equipped:
             v_fan = (q_fan * 0.000471947443) / max(1e-5, fan_area_m2)
-            damper_dp = bank.damper.forward_loss_coeff_k * 0.5 * air_density_kg_m3 * (v_fan ** 2)
+            damper_dp = bank.damper.forward_loss_coeff_k * 0.5 * air_density_kg_m3 * (v_fan**2)
             damper_dp += bank.damper.cracking_pressure_pa
 
         effective_p = max(0.0, p_mid - damper_dp)
@@ -231,12 +231,12 @@ def solve_chassis_operating_point(
         q_net = max(0.0, q_active_total - q_back_total)
 
         # Chassis system backpressure required for Q_net
-        p_chassis_req = bank.chassis_impedance_curve_k * (q_net ** 1.85)
+        p_chassis_req = bank.chassis_impedance_curve_k * (q_net**1.85)
 
         if effective_p > p_chassis_req:
-            p_low = p_mid
-        else:
             p_high = p_mid
+        else:
+            p_low = p_mid
 
         best_p = effective_p
         best_q_net = q_net
@@ -344,11 +344,7 @@ def evaluate_fan_bank_redundancy(bank: FanBankSpec) -> FanRedundancyReport:
     comp_rpm = bank.fan.rated_rpm * (comp_duty / 100.0)
     power_single_c = bank.fan.rated_power_w * ((comp_duty / 100.0) ** 3)
     total_power_c = active_failed * power_single_c
-    dba_c = (
-        base_fan_dba
-        + 50.0 * math.log10(max(0.1, comp_duty / 100.0))
-        + 10.0 * math.log10(max(1, active_failed))
-    )
+    dba_c = base_fan_dba + 50.0 * math.log10(max(0.1, comp_duty / 100.0)) + 10.0 * math.log10(max(1, active_failed))
 
     failover = FailoverCompensationResult(
         target_cooling_cfm=round(target_cfm, 1),

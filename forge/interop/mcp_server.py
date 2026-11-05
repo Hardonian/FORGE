@@ -9,6 +9,7 @@ from forge.cad.nurbs_step import export_exact_nurbs_step
 from forge.cad.tpms import TPMSSpec, evaluate_tpms_thermo_hydraulics
 from forge.cloud.rack_twin import IPMITelemetryFrame, evaluate_datacenter_rack_roi
 from forge.compliance.dossier import generate_compliance_dossier
+from forge.compliance.ocp_standards import OCPFormFactor, evaluate_ocp_compliance
 from forge.compliance.provenance import (
     generate_hardware_provenance_passport,
     verify_hardware_provenance,
@@ -19,7 +20,11 @@ from forge.interop.calculix_fea import export_calculix_inp
 from forge.interop.fmi_fmu import export_fmu_package
 from forge.interop.open_schemas import export_all_json_schemas
 from forge.interop.openusd import export_openusd_stage
+from forge.lab.bayesian_mcmc import run_bayesian_mcmc_calibration
 from forge.opt.differentiable_adjoint import run_differentiable_adjoint_codesign
+from forge.physics.cold_plate import ColdPlateSpec, solve_cold_plate_hydraulics
+from forge.physics.cowos_multidie import CoWoSPackageSpec, solve_cowos_multidie_thermal_network
+from forge.physics.fan_redundancy import FanBankSpec, evaluate_fan_bank_redundancy
 from forge.physics.heatsink import HeatsinkSpec, solve_coupled_duct_heatsink_system
 from forge.physics.hybrid_cooling import HybridAALCSpec, solve_hybrid_aalc_cooling
 from forge.physics.solver_1d import solve_duct_physics
@@ -211,6 +216,66 @@ def list_mcp_tools() -> List[Dict[str, Any]]:
                     "volumetric_flow_cfm": {"type": "number", "default": 120.0},
                 },
                 "required": ["specs"],
+            },
+        },
+        {
+            "name": "forge_fan_redundancy",
+            "description": "Analyze dual counter-rotating fan staging, N+1 backflow leakage, and emergency failover RPM override.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "total_fans": {"type": "integer", "default": 5},
+                    "failed_fans": {"type": "integer", "default": 1},
+                    "duty_cycle_pct": {"type": "number", "default": 75.0},
+                    "target_cooling_cfm": {"type": "number", "default": 320.0},
+                },
+            },
+        },
+        {
+            "name": "forge_cowos_multidie",
+            "description": "Solve multi-die CoWoS package (GPU, HBM3e, VRMs) thermal network with upstream air preheat cascade.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "airflow_cfm": {"type": "number", "default": 140.0},
+                    "ambient_temp_c": {"type": "number", "default": 35.0},
+                },
+            },
+        },
+        {
+            "name": "forge_cold_plate_hydraulics",
+            "description": "Evaluate skived copper microchannel liquid cold plate hydraulics, UQD pressure drop, and CHF safety margin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "coolant": {"type": "string", "enum": ["water", "pg25", "pg50", "dielectric"], "default": "pg25"},
+                    "flow_rate_lpm": {"type": "number", "default": 3.5},
+                    "heat_load_w": {"type": "number", "default": 1000.0},
+                },
+            },
+        },
+        {
+            "name": "forge_ocp_compliance",
+            "description": "Verify formal compliance against Open Compute Project (OCP) ORV3 and OAM v2.0 standards.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": DuctSpec.model_json_schema(),
+                    "form_factor": {"type": "string", "enum": ["ocp_orv3_1ou", "ocp_orv3_2ou", "ocp_oam_v2"], "default": "ocp_oam_v2"},
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_bayesian_calibration",
+            "description": "Execute Bayesian MCMC inverse parameter estimation for wall roughness, TIM resistance, and fan factor from lab telemetry.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": DuctSpec.model_json_schema(),
+                    "iterations": {"type": "integer", "default": 800},
+                },
+                "required": ["spec"],
             },
         },
     ]
@@ -417,6 +482,46 @@ def handle_mcp_jsonrpc_request(request: Dict[str, Any]) -> Dict[str, Any]:
                     "velocity_uniformity_index": [round(float(v), 4) for v in batch_res.velocity_uniformity_index],
                     "estimated_mass_grams": [round(float(v), 1) for v in batch_res.estimated_mass_grams],
                 }
+
+            elif tool_name == "forge_fan_redundancy":
+                bank_spec = FanBankSpec(
+                    total_fans=int(args.get("total_fans", 5)),
+                    failed_fans=int(args.get("failed_fans", 1)),
+                    duty_cycle_pct=float(args.get("duty_cycle_pct", 75.0)),
+                    target_cooling_cfm=float(args.get("target_cooling_cfm", 320.0)),
+                )
+                rep = evaluate_fan_bank_redundancy(bank_spec)
+                out_obj = rep.model_dump()
+
+            elif tool_name == "forge_cowos_multidie":
+                pkg_spec = CoWoSPackageSpec()
+                rep = solve_cowos_multidie_thermal_network(
+                    pkg_spec,
+                    airflow_cfm=float(args.get("airflow_cfm", 140.0)),
+                    ambient_temp_c=float(args.get("ambient_temp_c", 35.0)),
+                )
+                out_obj = rep.model_dump()
+
+            elif tool_name == "forge_cold_plate_hydraulics":
+                cp_spec = ColdPlateSpec(
+                    coolant=args.get("coolant", "pg25"),
+                    flow_rate_lpm=float(args.get("flow_rate_lpm", 3.5)),
+                    heat_load_w=float(args.get("heat_load_w", 1000.0)),
+                )
+                rep = solve_cold_plate_hydraulics(cp_spec)
+                out_obj = rep.model_dump()
+
+            elif tool_name == "forge_ocp_compliance":
+                spec = DuctSpec(**args["spec"])
+                ff_val = args.get("form_factor", "ocp_oam_v2")
+                rep = evaluate_ocp_compliance(spec, form_factor=OCPFormFactor(ff_val))
+                out_obj = rep.model_dump()
+
+            elif tool_name == "forge_bayesian_calibration":
+                spec = DuctSpec(**args["spec"])
+                iters = int(args.get("iterations", 600))
+                rep = run_bayesian_mcmc_calibration(spec, iterations=iters, burn_in=iters // 3)
+                out_obj = rep.model_dump()
 
             else:
                 raise ValueError(f"Unknown MCP tool: '{tool_name}'")

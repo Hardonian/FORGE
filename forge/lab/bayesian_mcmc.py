@@ -96,19 +96,19 @@ def _evaluate_model_at_params(
     eff_flow = point.flow_cfm * fan_install_factor
     cond = PhysicsConditions(
         volumetric_flow_cfm=eff_flow,
-        wall_roughness_m=roughness_um * 1e-6,
+        surface_roughness_mm=roughness_um * 1e-3,
     )
     phys = solve_duct_physics(spec, cond)
 
     # Pred pressure drop accounts for duct + heatsink impedance
     # Heatsink impedance scales with Q^1.75
-    hs_dp_pa = 0.0072 * (eff_flow ** 1.78)
+    hs_dp_pa = 0.0072 * (eff_flow**1.78)
     total_dp = phys.total_pressure_drop_pa + hs_dp_pa
 
     # Thermal junction temp: T_j = T_in + (Q_chip * R_conv) + (Q_chip * R_tim)
     # R_conv scales inversely with flow
     r_conv = 0.048 * ((100.0 / max(10.0, eff_flow)) ** 0.65)
-    t_ambient = cond.ambient_temperature_c
+    t_ambient = cond.air_temp_c
     pred_temp = t_ambient + chip_power_w * (r_conv + r_tim_k_w)
 
     return (total_dp, pred_temp)
@@ -170,7 +170,7 @@ def run_bayesian_mcmc_calibration(
             # Gaussian log-likelihood
             res_dp = (pred_dp - pt.measured_pressure_drop_pa) / max(0.5, pt.pressure_sensor_std_pa)
             res_t = (pred_t - pt.measured_hotspot_temp_c) / max(0.2, pt.temp_sensor_std_c)
-            ll -= 0.5 * (res_dp ** 2 + res_t ** 2)
+            ll -= 0.5 * (res_dp**2 + res_t**2)
         return ll
 
     curr_ll = log_likelihood(curr_rough, curr_tim, curr_fan)
@@ -241,7 +241,9 @@ def run_bayesian_mcmc_calibration(
             chain_fan.append(curr_fan)
 
     # Compute posterior statistics
-    def analyze_chain(samples: List[float], name: str, unit: str, pr_mean: float, map_val: float) -> InferredParameterPosterior:
+    def analyze_chain(
+        samples: List[float], name: str, unit: str, pr_mean: float, map_val: float
+    ) -> InferredParameterPosterior:
         sorted_s = sorted(samples)
         n = len(sorted_s)
         mean_val = sum(sorted_s) / n
@@ -261,9 +263,19 @@ def run_bayesian_mcmc_calibration(
         )
 
     map_r, map_t, map_f = best_params
-    post_rough = analyze_chain(chain_rough, "Effective Wall Roughness (k_s)", "um", priors["roughness_um"].prior_mean, map_r)
-    post_tim = analyze_chain(chain_tim, "Thermal Interface Contact Resistance (R_TIM)", "K/W", priors["r_tim_k_w"].prior_mean, map_t)
-    post_fan = analyze_chain(chain_fan, "Fan Installation Degradation Factor (eta_install)", "ratio", priors["fan_install_factor"].prior_mean, map_f)
+    post_rough = analyze_chain(
+        chain_rough, "Effective Wall Roughness (k_s)", "um", priors["roughness_um"].prior_mean, map_r
+    )
+    post_tim = analyze_chain(
+        chain_tim, "Thermal Interface Contact Resistance (R_TIM)", "K/W", priors["r_tim_k_w"].prior_mean, map_t
+    )
+    post_fan = analyze_chain(
+        chain_fan,
+        "Fan Installation Degradation Factor (eta_install)",
+        "ratio",
+        priors["fan_install_factor"].prior_mean,
+        map_f,
+    )
 
     # Compute RMSE before and after calibration
     pre_sq_dp = 0.0
@@ -272,9 +284,15 @@ def run_bayesian_mcmc_calibration(
     post_sq_t = 0.0
     for pt in telemetry:
         dp_pre, t_pre = _evaluate_model_at_params(
-            spec, pt, priors["roughness_um"].prior_mean, priors["r_tim_k_w"].prior_mean, priors["fan_install_factor"].prior_mean
+            spec,
+            pt,
+            priors["roughness_um"].prior_mean,
+            priors["r_tim_k_w"].prior_mean,
+            priors["fan_install_factor"].prior_mean,
         )
-        dp_post, t_post = _evaluate_model_at_params(spec, pt, post_rough.posterior_mean, post_tim.posterior_mean, post_fan.posterior_mean)
+        dp_post, t_post = _evaluate_model_at_params(
+            spec, pt, post_rough.posterior_mean, post_tim.posterior_mean, post_fan.posterior_mean
+        )
 
         pre_sq_dp += (dp_pre - pt.measured_pressure_drop_pa) ** 2
         pre_sq_t += (t_pre - pt.measured_hotspot_temp_c) ** 2
@@ -294,7 +312,7 @@ def run_bayesian_mcmc_calibration(
         f"MCMC CONVERGED: Inferred posterior k_s = {post_rough.posterior_mean:.1f} +/- {post_rough.posterior_std:.1f} um "
         f"[95% CI: {post_rough.ci_95_lower:.1f} to {post_rough.ci_95_upper:.1f} um], "
         f"R_TIM = {post_tim.posterior_mean:.4f} K/W, eta_fan = {post_fan.posterior_mean:.3f}. "
-        f"DP RMSE reduced from {pre_rmse_dp:.2f} Pa -> {post_rmse_dp:.2f} Pa (-{((pre_rmse_dp - post_rmse_dp)/pre_rmse_dp)*100.0:.1f}%). "
+        f"DP RMSE reduced from {pre_rmse_dp:.2f} Pa -> {post_rmse_dp:.2f} Pa (-{((pre_rmse_dp - post_rmse_dp) / pre_rmse_dp) * 100.0:.1f}%). "
         f"Temp RMSE reduced from {pre_rmse_t:.2f} C -> {post_rmse_t:.2f} C."
     )
 
