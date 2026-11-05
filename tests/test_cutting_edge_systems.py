@@ -153,6 +153,7 @@ def test_digital_twin_online_tracker_and_connection_manager(sample_spec: DuctSpe
         inlet_ambient_temp_c=25.0,
         gpu_hotspot_temp_c=68.0,
         board_power_watts=400.0,
+        measured_differential_pressure_pa=tracker.nominal_dp_ref,
     )
     s0 = tracker.process_frame(frame0)
     assert s0.filter_dust_loading_factor == 1.0
