@@ -46,7 +46,6 @@ datas = [
 # Collect any data files required by packages
 datas += collect_data_files("pydantic")
 datas += collect_data_files("fastapi")
-datas += collect_data_files("torch")
 
 a = Analysis(
     [str(forge_dir / "__main__.py")],

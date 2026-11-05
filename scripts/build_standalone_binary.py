@@ -50,12 +50,30 @@ def main() -> int:
         "PyInstaller",
         "--clean",
         "--noconfirm",
+        "--distpath",
+        str(dist_dir),
+        "--workpath",
+        str(build_dir),
         str(spec_path),
     ]
-    res = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
-    if res.returncode != 0:
-        print("[ERROR] PyInstaller compilation failed!", file=sys.stderr)
-        print(res.stderr, file=sys.stderr)
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(repo_root),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    last_line = ""
+    for line in proc.stdout:
+        last_line = line.strip()
+        if "INFO:" in line or "WARNING:" in line or "Building" in line:
+            print(f"  > {last_line}")
+    proc.wait()
+    if proc.returncode != 0:
+        print(f"[ERROR] PyInstaller compilation failed with code {proc.returncode}!", file=sys.stderr)
+        print(f"Last message: {last_line}", file=sys.stderr)
         return 1
 
     # Locate generated executable
