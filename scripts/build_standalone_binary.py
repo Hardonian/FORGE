@@ -88,7 +88,7 @@ def main() -> int:
     # 3. Smoke Test Compiled Executable
     print("[3/5] Performing self-test verification on compiled standalone binary...")
     ver_cmd = [str(bin_path), "--version"]
-    ver_res = subprocess.run(ver_cmd, capture_output=True, text=True)
+    ver_res = subprocess.run(ver_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if ver_res.returncode != 0 or "FORGE" not in ver_res.stdout:
         print(f"[ERROR] Binary failed '--version' check: {ver_res.stderr}", file=sys.stderr)
         return 1
@@ -97,7 +97,7 @@ def main() -> int:
     # Test quick CLI execution
     demo_out = dist_dir / "smoke_test_demo"
     demo_cmd = [str(bin_path), "demo", "--out", str(demo_out)]
-    demo_res = subprocess.run(demo_cmd, capture_output=True, text=True)
+    demo_res = subprocess.run(demo_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if demo_res.returncode != 0:
         print(f"[ERROR] Binary failed 'demo' execution test: {demo_res.stderr}", file=sys.stderr)
         return 1

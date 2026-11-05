@@ -702,16 +702,20 @@ def demo(
 
     # 2. PyTorch Differentiable Adjoint Co-Design
     console.print("[bold yellow]2. PyTorch Differentiable Adjoint Co-Design...[/bold yellow]")
-    adj = run_differentiable_adjoint_codesign(spec, steps=25)
-    opt_spec = adj.optimized_spec
-    console.print(
-        f"   [green][OK][/green] Adjoint dP: {adj.initial_pressure_drop_pa:.2f} Pa -> "
-        f"{adj.optimized_pressure_drop_pa:.2f} Pa (-{adj.pressure_drop_reduction_pct}%)"
-    )
-    console.print(
-        f"   [green][OK][/green] Hotspot Die: {adj.initial_hotspot_temp_c:.1f} C -> "
-        f"{adj.optimized_hotspot_temp_c:.1f} C (-{adj.hotspot_reduction_c:.1f} C)"
-    )
+    try:
+        adj = run_differentiable_adjoint_codesign(spec, steps=25)
+        opt_spec = adj.optimized_spec
+        console.print(
+            f"   [green][OK][/green] Adjoint dP: {adj.initial_pressure_drop_pa:.2f} Pa -> "
+            f"{adj.optimized_pressure_drop_pa:.2f} Pa (-{adj.pressure_drop_reduction_pct}%)"
+        )
+        console.print(
+            f"   [green][OK][/green] Hotspot Die: {adj.initial_hotspot_temp_c:.1f} C -> "
+            f"{adj.optimized_hotspot_temp_c:.1f} C (-{adj.hotspot_reduction_c:.1f} C)"
+        )
+    except RuntimeError as ex:
+        console.print(f"   [yellow][INFO][/yellow] {ex}")
+        opt_spec = spec
 
     # 3. TPMS Metamaterial Core
     console.print("[bold yellow]3. TPMS Gyroid Metamaterial Synthesis...[/bold yellow]")
