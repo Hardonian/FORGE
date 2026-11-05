@@ -643,7 +643,14 @@ def batch_screen(
 ):
     """Screen thousands of candidate duct configurations in parallel via vectorized PyTorch tensor SIMD."""
     import time
-    import torch
+    try:
+        import torch
+    except ImportError:
+        console.print(
+            "[yellow]PyTorch is not available in this environment. "
+            "Please install torch or run via Docker for batch tensor screening.[/yellow]"
+        )
+        return
 
     torch.manual_seed(42)
     inlet_w = torch.empty(count).uniform_(60.0, 140.0)
