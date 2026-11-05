@@ -47,3 +47,4 @@ services:
       - ./examples:/app/examples:ro
     entrypoint: ["python", "-m", "forge"]
     command: ["demo", "--out", "/app/runs/cloud_demo"]
+

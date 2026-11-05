@@ -69,7 +69,7 @@ def main() -> int:
     for line in proc.stdout:
         last_line = line.strip()
         if "INFO:" in line or "WARNING:" in line or "Building" in line:
-            print(f"  > {last_line}")
+            print(f"  > {last_line}", flush=True)
     proc.wait()
     if proc.returncode != 0:
         print(f"[ERROR] PyInstaller compilation failed with code {proc.returncode}!", file=sys.stderr)

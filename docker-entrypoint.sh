@@ -12,3 +12,4 @@ fi
 
 # Otherwise, pass all arguments directly to the FORGE CLI dispatcher
 exec python -m forge "$@"
+
