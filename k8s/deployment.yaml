@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forge-api-deployment
+  namespace: default
+  labels:
+    app: forge-platform
+    tier: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: forge-platform
+      tier: api
+  template:
+    metadata:
+      labels:
+        app: forge-platform
+        tier: api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: forge-container
+          image: ghcr.io/example/forge:v0.2.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http-studio
+          env:
+            - name: FORGE_HOST
+              value: "0.0.0.0"
+            - name: FORGE_PORT
+              value: "8000"
+            - name: FORGE_WORKERS
+              value: "4"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "1536Mi"
+            limits:
+              cpu: "4000m"
+              memory: "4096Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: ephemeral-runs
+              mountPath: /app/runs
+      volumes:
+        - name: ephemeral-runs
+          emptyDir: {}

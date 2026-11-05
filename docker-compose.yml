@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  forge-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: forge-inverse-design:v0.2.0
+    container_name: forge_studio
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - FORGE_HOST=0.0.0.0
+      - FORGE_PORT=8000
+      - FORGE_WORKERS=4
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./runs:/app/runs
+      - ./examples:/app/examples:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4096M
+        reservations:
+          cpus: "1.0"
+          memory: 1024M
+
+  forge-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: forge-inverse-design:v0.2.0
+    container_name: forge_batch_worker
+    restart: "no"
+    profiles:
+      - worker
+    volumes:
+      - ./runs:/app/runs
+      - ./examples:/app/examples:ro
+    entrypoint: ["python", "-m", "forge"]
+    command: ["demo", "--out", "/app/runs/cloud_demo"]
