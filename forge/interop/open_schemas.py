@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from forge.api.websocket_twin import DigitalTwinHealthState, LiveTelemetryFrame
 from forge.cad.honeycomb import HoneycombStatorSpec
 from forge.cad.manifold import ManifoldSpec
 from forge.cad.tpms import TPMSSpec, TPMSThermoHydraulicReport
@@ -13,12 +14,13 @@ from forge.compliance.provenance import HardwareProvenancePassport
 from forge.core.models import DFMReport, DuctSpec, PhysicsConditions, PhysicsMetrics
 from forge.opt.differentiable_adjoint import AdjointCoDesignResult
 from forge.physics.heatsink import CoupledHeatsinkReport, HeatsinkSpec
+from forge.physics.hybrid_cooling import HybridAALCReport, HybridAALCSpec
 from forge.physics.structural_modal import ModalResonanceReport
 from forge.physics.transient_thermal import TransientThermalReport
 
 
 def export_all_json_schemas() -> Dict[str, Any]:
-    """Export Draft 2020-12 JSON Schemas for all 16 primary FORGE domain models for cross-language interoperability."""
+    """Export Draft 2020-12 JSON Schemas for all 20 primary FORGE domain models for cross-language interoperability."""
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "platform": "FORGE",
@@ -39,5 +41,9 @@ def export_all_json_schemas() -> Dict[str, Any]:
             "ModalResonanceReport": ModalResonanceReport.model_json_schema(),
             "TransientThermalReport": TransientThermalReport.model_json_schema(),
             "RackTwinROIReport": RackTwinROIReport.model_json_schema(),
+            "HybridAALCSpec": HybridAALCSpec.model_json_schema(),
+            "HybridAALCReport": HybridAALCReport.model_json_schema(),
+            "LiveTelemetryFrame": LiveTelemetryFrame.model_json_schema(),
+            "DigitalTwinHealthState": DigitalTwinHealthState.model_json_schema(),
         },
     }

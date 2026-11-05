@@ -26,7 +26,7 @@ class LiveTelemetryFrame(BaseModel):
     fan_rpm: float = Field(..., gt=500.0, le=25000.0)
     fan_pwm_pct: float = Field(..., ge=10.0, le=100.0)
     inlet_ambient_temp_c: float = Field(default=25.0)
-    exhaust_temp_c: float = Field(default=48.0)
+    exhaust_temp_c: float = Field(default=30.0)
     gpu_hotspot_temp_c: float = Field(default=72.0)
     board_power_watts: float = Field(default=400.0)
     measured_differential_pressure_pa: float | None = None
@@ -50,11 +50,11 @@ class DigitalTwinHealthState(BaseModel):
 class DigitalTwinOnlineTracker:
     """Online state estimator tracking filter dust loading and TIM degradation over telemetry streams."""
 
-    def __init__(self, spec: DuctSpec, baseline_r_tim: float = 0.022):
-        self.spec = spec
+    def __init__(self, spec: DuctSpec | None = None, baseline_r_tim: float = 0.022):
+        self.spec = spec or DuctSpec()
         self.baseline_r_tim = baseline_r_tim
         self.cond = PhysicsConditions()
-        self.nominal_physics = solve_duct_physics(spec, self.cond)
+        self.nominal_physics = solve_duct_physics(self.spec, self.cond)
         self.nominal_dp_ref = self.nominal_physics.total_pressure_drop_pa
         self.ema_dust_factor = 1.0
         self.ema_tim_r = baseline_r_tim
@@ -132,6 +132,22 @@ class DigitalTwinConnectionManager:
 
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.trackers: Dict[str, DigitalTwinOnlineTracker] = {}
+
+    def get_or_create_tracker(
+        self, chassis_id: str, spec: DuctSpec | None = None
+    ) -> DigitalTwinOnlineTracker:
+        """Retrieve existing tracker or initialize a new one for chassis_id."""
+        if chassis_id not in self.trackers:
+            self.trackers[chassis_id] = DigitalTwinOnlineTracker(spec=spec)
+        return self.trackers[chassis_id]
+
+    def process_telemetry(
+        self, chassis_id: str, frame: LiveTelemetryFrame
+    ) -> DigitalTwinHealthState:
+        """Process incoming frame via the chassis-specific tracker."""
+        tracker = self.get_or_create_tracker(chassis_id)
+        return tracker.process_frame(frame)
 
     async def connect(self, chassis_id: str, websocket: WebSocket):
         await websocket.accept()
@@ -141,7 +157,8 @@ class DigitalTwinConnectionManager:
 
     def disconnect(self, chassis_id: str, websocket: WebSocket):
         if chassis_id in self.active_connections:
-            self.active_connections[chassis_id].remove(websocket)
+            if websocket in self.active_connections[chassis_id]:
+                self.active_connections[chassis_id].remove(websocket)
             if not self.active_connections[chassis_id]:
                 del self.active_connections[chassis_id]
 

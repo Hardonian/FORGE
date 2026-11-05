@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from forge import __version__
 from forge.cad.dfm import analyze_dfm
 from forge.cad.mesh import build_duct_mesh
+from forge.cad.nurbs_step import export_exact_nurbs_step
 from forge.cad.tpms import TPMSSpec, evaluate_tpms_thermo_hydraulics
 from forge.cloud.rack_twin import IPMITelemetryFrame, evaluate_datacenter_rack_roi
 from forge.compliance.dossier import generate_compliance_dossier
@@ -20,7 +21,9 @@ from forge.interop.open_schemas import export_all_json_schemas
 from forge.interop.openusd import export_openusd_stage
 from forge.opt.differentiable_adjoint import run_differentiable_adjoint_codesign
 from forge.physics.heatsink import HeatsinkSpec, solve_coupled_duct_heatsink_system
+from forge.physics.hybrid_cooling import HybridAALCSpec, solve_hybrid_aalc_cooling
 from forge.physics.solver_1d import solve_duct_physics
+from forge.physics.vectorized import evaluate_duct_specs_tensor_batch
 from forge.presets.catalog import list_presets
 from forge.topopt.darcy_solver import run_fluid_topology_optimization
 
@@ -168,6 +171,46 @@ def list_mcp_tools() -> List[Dict[str, Any]]:
                     "spec": DuctSpec.model_json_schema(),
                 },
                 "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_export_nurbs_step",
+            "description": "Export exact ISO-10303-21 STEP AP242 CAD model with bicubic B-spline NURBS surfaces (B_SPLINE_SURFACE_WITH_KNOTS, ADVANCED_FACE).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": DuctSpec.model_json_schema(),
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_hybrid_aalc_cooling",
+            "description": "Evaluate two-phase vapor chamber and heat pipe hybrid cooling limits (capillary, boiling CHF, entrainment, and condensation) for 600W-1200W AI accelerators.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": DuctSpec.model_json_schema(),
+                    "heat_load_watts": {"type": "number", "default": 800.0},
+                    "working_fluid": {"type": "string", "enum": ["water", "methanol", "acetone"], "default": "water"},
+                    "wick_structure": {"type": "string", "enum": ["sintered_copper", "micro_grooved", "screen_mesh"], "default": "sintered_copper"},
+                },
+                "required": ["spec"],
+            },
+        },
+        {
+            "name": "forge_batch_screen_specs",
+            "description": "Evaluate candidate duct specifications in parallel via vectorized PyTorch tensor SIMD/GPU pass.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "specs": {
+                        "type": "array",
+                        "items": DuctSpec.model_json_schema(),
+                    },
+                    "volumetric_flow_cfm": {"type": "number", "default": 120.0},
+                },
+                "required": ["specs"],
             },
         },
     ]
@@ -348,6 +391,32 @@ def handle_mcp_jsonrpc_request(request: Dict[str, Any]) -> Dict[str, Any]:
                     fmu_p = export_fmu_package(spec, Path(tmp) / "model.fmu")
                     fmu_size = fmu_p.stat().st_size
                 out_obj = {"fmu_filename": "model.fmu", "size_bytes": fmu_size, "status": "packaged"}
+
+            elif tool_name == "forge_export_nurbs_step":
+                spec = DuctSpec(**args["spec"])
+                step_text = export_exact_nurbs_step(spec)
+                out_obj = {"step_content": step_text, "char_count": len(step_text), "format": "AP242"}
+
+            elif tool_name == "forge_hybrid_aalc_cooling":
+                spec = DuctSpec(**args["spec"])
+                aalc_spec = HybridAALCSpec(
+                    heat_load_watts=float(args.get("heat_load_watts", 800.0)),
+                    working_fluid=args.get("working_fluid", "water"),
+                    wick_structure=args.get("wick_structure", "sintered_copper"),
+                )
+                rep = solve_hybrid_aalc_cooling(spec, aalc_spec=aalc_spec)
+                out_obj = rep.model_dump()
+
+            elif tool_name == "forge_batch_screen_specs":
+                specs = [DuctSpec(**s) for s in args["specs"]]
+                cond = PhysicsConditions(volumetric_flow_cfm=float(args.get("volumetric_flow_cfm", 120.0)))
+                batch_res = evaluate_duct_specs_tensor_batch(specs, conditions=cond)
+                out_obj = {
+                    "count": len(specs),
+                    "total_pressure_drop_pa": [round(float(v), 2) for v in batch_res.total_pressure_drop_pa],
+                    "velocity_uniformity_index": [round(float(v), 4) for v in batch_res.velocity_uniformity_index],
+                    "estimated_mass_grams": [round(float(v), 1) for v in batch_res.estimated_mass_grams],
+                }
 
             else:
                 raise ValueError(f"Unknown MCP tool: '{tool_name}'")

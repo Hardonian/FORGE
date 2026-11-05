@@ -106,10 +106,13 @@ WICK_PROPS = {
 
 def solve_hybrid_aalc_cooling(
     duct: DuctSpec,
-    aalc: HybridAALCSpec,
+    aalc: HybridAALCSpec | None = None,
     conditions: PhysicsConditions | None = None,
+    *,
+    aalc_spec: HybridAALCSpec | None = None,
 ) -> HybridAALCReport:
     """Solve coupled two-phase thermosyphon/vapor-chamber limits and duct aerodynamics."""
+    aalc = aalc or aalc_spec or HybridAALCSpec()
     cond = conditions or PhysicsConditions()
     duct_phys = solve_duct_physics(duct, cond)
 

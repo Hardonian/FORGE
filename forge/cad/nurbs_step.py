@@ -12,6 +12,7 @@ from pathlib import Path
 
 from forge.cad.mesh import compute_normal_wall_compensation, generate_profile_ring
 from forge.core.geometry import Vec3
+from forge.core.hashes import sha256_hash
 from forge.core.models import DuctSpec
 
 
@@ -97,11 +98,12 @@ def export_exact_nurbs_step(spec: DuctSpec, output_path: str | Path | None = Non
     v_interior = [round(j / float(n_v - deg_v), 6) for j in range(1, n_v - deg_v)]
 
     eid = 1
+    spec_hash = sha256_hash(spec.to_canonical_dict())[:12]
     lines: list[str] = [
         "ISO-10303-21;",
         "HEADER;",
         "FILE_DESCRIPTION(('FORGE Exact AP242 NURBS B-Spline CAD Model'), '2;1');",
-        f"FILE_NAME('FORGE_{spec.canonical_hash()[:12]}.stp', '2026-11-04T19:00:00', ('FORGE Generative Hardware'), ('Autonomous Inverse Engineering'), 'FORGE v0.2.0', 'FORGE Kernel', '');",
+        f"FILE_NAME('FORGE_{spec_hash}.stp', '2026-11-04T19:00:00', ('FORGE Generative Hardware'), ('Autonomous Inverse Engineering'), 'FORGE v0.2.0', 'FORGE Kernel', '');",
         "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'));",
         "ENDSEC;",
         "DATA;",

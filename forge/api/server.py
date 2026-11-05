@@ -1,7 +1,7 @@
 """FastAPI server providing REST endpoints and interactive Three.js 3D Web Studio."""
 from __future__ import annotations
-from typing import Dict, Optional
-from fastapi import FastAPI, Response
+from typing import Dict, List, Optional
+from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from forge import __version__
 from forge.core.models import DuctSpec, PhysicsConditions
@@ -15,8 +15,15 @@ from forge.cad.exporters import (
     export_step,
     export_glb,
 )
+from forge.cad.nurbs_step import export_exact_nurbs_step
 from forge.physics.solver_1d import solve_duct_physics
 from forge.physics.heatsink import HeatsinkSpec, solve_coupled_duct_heatsink_system
+from forge.physics.hybrid_cooling import HybridAALCSpec, solve_hybrid_aalc_cooling
+from forge.physics.vectorized import evaluate_duct_specs_tensor_batch
+from forge.api.websocket_twin import (
+    DigitalTwinConnectionManager,
+    LiveTelemetryFrame,
+)
 from forge.physics.network_solver import auto_balance_manifold, solve_manifold_network
 from forge.physics.acoustics import design_acoustic_metamaterial_liner
 from forge.cad.manifold import ManifoldSpec, build_manifold_mesh
@@ -62,6 +69,7 @@ import tempfile
 from pathlib import Path
 
 _ENTITLEMENT_MANAGER = CloudEntitlementManager()
+_TWIN_CONNECTION_MANAGER = DigitalTwinConnectionManager()
 
 app = FastAPI(
     title="FORGE Inverse-Design Platform API",
@@ -511,6 +519,58 @@ def provenance_passport_endpoint(
         "passport": passport.model_dump(mode="json"),
         "signature_verified": verify_hardware_provenance(passport),
     }
+
+
+@app.post("/api/v1/export/step-nurbs")
+def download_step_nurbs(spec: DuctSpec):
+    """Generate and download exact ISO-10303-21 STEP AP242 NURBS B-spline surface CAD file."""
+    content = export_exact_nurbs_step(spec)
+    return Response(
+        content=content,
+        media_type="application/step",
+        headers={"Content-Disposition": "attachment; filename=duct_nurbs_ap242.stp"},
+    )
+
+
+@app.post("/api/v1/hybrid-aalc")
+def hybrid_aalc_endpoint(
+    spec: DuctSpec,
+    aalc_spec: Optional[HybridAALCSpec] = None,
+    conditions: Optional[PhysicsConditions] = None,
+):
+    """Evaluate coupled two-phase vapor chamber and heat pipe hybrid cooling (AALC) limits."""
+    rep = solve_hybrid_aalc_cooling(spec, aalc_spec=aalc_spec, conditions=conditions)
+    return rep.model_dump()
+
+
+@app.post("/api/v1/batch-evaluate")
+def batch_evaluate_endpoint(
+    specs: List[DuctSpec],
+    conditions: Optional[PhysicsConditions] = None,
+):
+    """Evaluate a batch of candidate duct specifications in parallel via vectorized PyTorch tensor SIMD."""
+    batch_res = evaluate_duct_specs_tensor_batch(specs, conditions=conditions)
+    return {
+        "count": len(specs),
+        "total_pressure_drop_pa": [round(float(v), 2) for v in batch_res.total_pressure_drop_pa],
+        "velocity_uniformity_index": [round(float(v), 4) for v in batch_res.velocity_uniformity_index],
+        "reynolds_number": [round(float(v), 1) for v in batch_res.reynolds_number],
+        "estimated_mass_grams": [round(float(v), 1) for v in batch_res.estimated_mass_grams],
+    }
+
+
+@app.websocket("/ws/telemetry/{chassis_id}")
+async def digital_twin_websocket(websocket: WebSocket, chassis_id: str):
+    """Bidirectional real-time digital twin streaming endpoint for IPMI/BMC sensor telemetry."""
+    await _TWIN_CONNECTION_MANAGER.connect(chassis_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            frame = LiveTelemetryFrame(**data)
+            health = _TWIN_CONNECTION_MANAGER.process_telemetry(chassis_id, frame)
+            await websocket.send_json(health.model_dump())
+    except WebSocketDisconnect:
+        _TWIN_CONNECTION_MANAGER.disconnect(chassis_id, websocket)
 
 
 @app.get("/viewer", response_class=HTMLResponse)

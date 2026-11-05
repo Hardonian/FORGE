@@ -61,8 +61,11 @@ from forge.interop.openusd import export_openusd_stage
 from forge.interop.modelica import export_modelica_component
 from forge.interop.mcp_server import get_openai_tool_schemas
 from forge.interop.open_schemas import export_all_json_schemas
+from forge.cad.nurbs_step import export_exact_nurbs_step
 from forge.cad.tpms import TPMSSpec, build_tpms_lattice_mesh, evaluate_tpms_thermo_hydraulics
 from forge.opt.differentiable_adjoint import run_differentiable_adjoint_codesign
+from forge.physics.hybrid_cooling import HybridAALCSpec, solve_hybrid_aalc_cooling
+from forge.physics.vectorized import evaluate_duct_specs_tensor_batch
 from forge.interop.calculix_fea import export_calculix_inp
 from forge.interop.fmi_fmu import export_fmu_package
 from forge.compliance.provenance import (
@@ -508,9 +511,12 @@ def interop(
     elif t == "fmu":
         spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
         export_fmu_package(spec, out)
+    elif t == "nurbs":
+        spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+        out.write_text(export_exact_nurbs_step(spec), encoding="utf-8")
     else:
         raise typer.BadParameter(
-            f"Unknown interop target '{target}'. Choose schemas, tools, openusd, modelica, calculix, or fmu."
+            f"Unknown interop target '{target}'. Choose schemas, tools, openusd, modelica, calculix, fmu, or nurbs."
         )
     console.print(f"[bold green][OK][/bold green] Exported open interop target [cyan]{target}[/cyan] to [green]{out}[/green]")
 
@@ -580,6 +586,91 @@ def provenance(
         f"[bold green][OK][/bold green] Generated Cryptographic Passport [cyan]{passport.passport_id}[/cyan] "
         f"(Unit Cost: ${passport.total_estimated_unit_cost_usd:.2f}, Verified: {verified}) at [green]{out}[/green]"
     )
+
+
+@app.command("nurbs-step")
+def nurbs_step(
+    spec_path: Path = typer.Argument(..., help="Path to FORGE duct JSON specification"),
+    out: Path = typer.Option(Path("duct_nurbs_ap242.stp"), "--out", "-o", help="Output STEP AP242 file path"),
+):
+    """Export exact ISO-10303-21 STEP AP242 CAD model with bicubic B-spline NURBS surfaces."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    export_exact_nurbs_step(spec, output_path=out)
+    console.print(f"[bold green][OK][/bold green] Exported exact AP242 NURBS STEP to [cyan]{out}[/cyan]")
+
+
+@app.command("hybrid-aalc")
+def hybrid_aalc(
+    spec_path: Path = typer.Argument(..., help="Path to FORGE duct JSON specification"),
+    heat_load_w: float = typer.Option(800.0, "--tdp", help="Accelerator TDP in Watts"),
+    fluid: str = typer.Option("water", "--fluid", help="Working fluid: water, methanol, acetone"),
+    wick: str = typer.Option("sintered_copper", "--wick", help="Wick structure: sintered_copper, micro_grooved, screen_mesh"),
+    out: Path | None = typer.Option(None, "--out", "-o", help="Optional output JSON report path"),
+):
+    """Evaluate coupled two-phase vapor chamber and heat pipe hybrid cooling (AALC) limits."""
+    spec = DuctSpec(**json.loads(spec_path.read_text(encoding="utf-8")))
+    aalc_spec = HybridAALCSpec(
+        heat_load_watts=heat_load_w,
+        working_fluid=fluid,  # type: ignore[arg-type]
+        wick_structure=wick,  # type: ignore[arg-type]
+    )
+    rep = solve_hybrid_aalc_cooling(spec, aalc_spec=aalc_spec)
+    console.print(f"[bold cyan]Hybrid AALC Two-Phase Thermal Evaluation ({fluid.upper()} / {wick})[/bold cyan]")
+    console.print(f"- Capillary Limit:       [green]{rep.capillary_limit_watts:.1f} W[/green]")
+    console.print(f"- Boiling CHF Limit:     [green]{rep.boiling_limit_watts:.1f} W[/green]")
+    console.print(f"- Entrainment Limit:     [green]{rep.entrainment_limit_watts:.1f} W[/green]")
+    console.print(f"- Limiting Mechanism:    [yellow]{rep.limiting_mechanism}[/yellow]")
+    console.print(f"- Margin to Dryout:      [bold green]{rep.thermal_margin_to_dryout_pct:.1f}%[/bold green]")
+    hotspot_color = "red" if rep.throttling_triggered else "green"
+    console.print(
+        f"- Hotspot Junction Temp: [bold {hotspot_color}]{rep.hotspot_junction_temp_c:.1f} C[/bold] "
+        f"(Margin: {rep.junction_margin_c:.1f} C)"
+    )
+    console.print(
+        f"- Total System Delta-P:  [yellow]{rep.system_total_dp_pa:.1f} Pa[/yellow] "
+        f"(Condenser: {rep.condenser_air_dp_pa:.1f} Pa)"
+    )
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(rep.model_dump(), indent=2) + "\n", encoding="utf-8")
+        console.print(f"[bold green][OK][/bold green] Report saved to [cyan]{out}[/cyan]")
+
+
+@app.command("batch-screen")
+def batch_screen(
+    count: int = typer.Option(1000, "--count", "-n", help="Number of Monte Carlo candidate ducts to screen"),
+    cfm: float = typer.Option(120.0, "--cfm", help="Volumetric airflow in CFM"),
+):
+    """Screen thousands of candidate duct configurations in parallel via vectorized PyTorch tensor SIMD."""
+    import time
+    import torch
+
+    torch.manual_seed(42)
+    inlet_w = torch.empty(count).uniform_(60.0, 140.0)
+    inlet_h = torch.empty(count).uniform_(40.0, 100.0)
+    outlet_w = torch.empty(count).uniform_(60.0, 180.0)
+    outlet_h = torch.empty(count).uniform_(40.0, 120.0)
+    length = torch.empty(count).uniform_(80.0, 250.0)
+    wall = torch.empty(count).uniform_(1.6, 3.2)
+    tensor_specs = torch.stack([inlet_w, inlet_h, outlet_w, outlet_h, length, wall], dim=1)
+
+    cond = PhysicsConditions(volumetric_flow_cfm=cfm)
+    t0 = time.perf_counter()
+    res = evaluate_duct_specs_tensor_batch(tensor_specs, conditions=cond)
+    t_elapsed_ms = (time.perf_counter() - t0) * 1000.0
+
+    designs_per_sec = count / max(1e-6, (t_elapsed_ms / 1000.0))
+    console.print("[bold cyan]Vectorized Tensor Batch Evaluation Complete[/bold cyan]")
+    console.print(
+        f"- Evaluated [bold green]{count}[/bold green] candidate designs in "
+        f"[bold yellow]{t_elapsed_ms:.2f} ms[/bold yellow] ({designs_per_sec:.0f} designs/sec)"
+    )
+    console.print(
+        f"- Mean Pressure Drop:   [green]{float(res.total_pressure_drop_pa.mean()):.2f} Pa[/green] "
+        f"(Min: {float(res.total_pressure_drop_pa.min()):.2f} Pa, Max: {float(res.total_pressure_drop_pa.max()):.2f} Pa)"
+    )
+    console.print(f"- Mean Flow Uniformity: [green]{float(res.velocity_uniformity_index.mean()):.4f}[/green]")
+    console.print(f"- Mean Shell Mass:      [green]{float(res.estimated_mass_grams.mean()):.1f} g[/green]")
 
 
 @app.command()
